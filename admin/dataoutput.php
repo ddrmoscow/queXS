@@ -85,19 +85,19 @@ if (isset($_GET['key']) || isset($_GET['sample']))
 	echo("token,".T_("Case ID")."");
 	foreach($svars as $s)
 	{
-		echo("," . $s['value']);
+		echo("," . str_replace(","," ",$s['value']));
 	}
 	
 	if (isset($_GET['sample']))
 	{
-		echo(",".T_("Current Outcome").",".T_("Number of call attempts").",".T_("Number of calls").",".T_("Case notes").",".T_("Total interview time over all calls (mins)").",".T_("Interview time for last call (mins)").",".T_("Last number dialled").",".T_("DATE/TIME Last number dialled").",".T_("Operator username for last call").",".T_("Shift report").", AAPOR");
+		echo(",".T_("Outcome ID").",".T_("Current Outcome").",".T_("Number of call attempts").",".T_("Number of calls").",".T_("Case notes").",".T_("Total interview time over all calls (mins)").",".T_("Interview time for last call (mins)").",".T_("Last number dialled").",".T_("DATE/TIME Last number dialled").",".T_("Operator username for last call").",".T_("Shift report").", AAPOR");
 	}
 	
 	echo("\n");
 
 	$sql = "SELECT c.token,c.case_id ";
 
-	if (isset($_GET['sample'])) $sql .= ", o.description, 
+	if (isset($_GET['sample'])) $sql .= ", o.outcome_id, o.description, 
 	(SELECT COUNT(ca.call_attempt_id) FROM `call_attempt` as ca WHERE ca.case_id = c.case_id ) as callattempts,
 	(SELECT COUNT(cl.call_id) FROM `call` as cl WHERE cl.case_id = c.case_id ) as calls,
 	(SELECT GROUP_CONCAT(cn1.note SEPARATOR '|') FROM `case_note`  as cn1 WHERE c.case_id = cn1.case_id GROUP BY cn1.case_id)as casenotes,
@@ -106,7 +106,7 @@ if (isset($_GET['key']) || isset($_GET['sample']))
 	(SELECT cp1.phone FROM `call` as cl4, `contact_phone` as cp1 WHERE cl4.call_id = c.last_call_id AND cp1.contact_phone_id = cl4.contact_phone_id ) as lastnumber,
 	(SELECT cl55.start  FROM `call` as cl55 WHERE cl55.call_id = c.last_call_id ) as lastcallstart,
 	(SELECT op1.username FROM `call` as cl5, `operator` as op1 WHERE cl5.call_id = c.last_call_id AND op1.operator_id = cl5.operator_id) as operatoru, 
-	(SELECT GROUP_CONCAT(DISTINCT sr1.report SEPARATOR '|') FROM `call` as cl6, `shift` as sh1, `shift_report` as sr1 WHERE cl6.case_id = c.case_id AND sr1.shift_id = sh1.shift_id AND sh1.questionnaire_id = c.questionnaire_id AND cl6.start >= sh1.start AND cl6.end < sh1.end GROUP BY sr1.shift_id) as shiftr,
+	(SELECT GROUP_CONCAT(DISTINCT sr1.report SEPARATOR '|') FROM `call` as cl6, `shift` as sh1, `shift_report` as sr1 WHERE cl6.case_id = c.case_id AND sr1.shift_id = sh1.shift_id AND sh1.questionnaire_id = c.questionnaire_id AND cl6.start >= sh1.start AND cl6.end < sh1.end GROUP BY cl6.case_id) as shiftr,
 	o.aapor_id ";
 
 	$i = 0;
@@ -149,8 +149,8 @@ if (isset($_GET['key']) || isset($_GET['sample']))
 			}
 			if (isset($_GET['sample']))
 			{
-				$l['description'] = T_($l['description']);
-				echo "," . str_replace(","," ",$l['description']) . "," .$l['callattempts']."," .$l['calls']."," .$l['casenotes'].",".$l['interviewtimec'].",".$l['interviewtimel'].",".$l['lastnumber'].",".$l['lastcallstart'].",".$l['operatoru'].",".$l['shiftr'].",". $l['aapor_id'];
+				if(!empty($l['description'])) $l['description'] = T_($l['description']);
+				echo ",".$l['outcome_id'].",". str_replace(","," ",$l['description']).",".$l['callattempts'].",".$l['calls']."," .str_replace(","," ",$l['casenotes']).",".$l['interviewtimec'].",".$l['interviewtimel'].",".$l['lastnumber'].",".$l['lastcallstart'].",".$l['operatoru'].",".$l['shiftr'].",". $l['aapor_id'];
 			}
 			echo  "\n";
 		}
@@ -213,7 +213,7 @@ if ($questionnaire_id)
 	$ls = $db->GetRow($sql);
 	$lsid = $ls['lime_sid'];
 
-	print "&emsp;<a href='" . LIME_URL . "admin/admin.php?action=exportresults&amp;sid=$lsid' class='btn btn-default fa btn-lime'>".  T_("Download data for this questionnaire via Limesurvey") . "</a></div>";
+	print "&emsp;<a href='" . LIME_URL . "admin/admin.php?action=exportresults&amp;sid=$lsid&amp;interviewer=1' class='btn btn-default fa btn-lime'>".  T_("Download data for this questionnaire via Limesurvey") . "</a></div>";
 
 	print "<div class='form-group clearfix'><h3 class='col-sm-4 text-right'>" . T_("Please select a sample") . ":&emsp;</h3>";
 	$sample_import_id = false;
@@ -222,7 +222,7 @@ if ($questionnaire_id)
 
 	if ($sample_import_id)
 	{
-		print "&emsp;<a href='" .LIME_URL . "admin/admin.php?action=exportresults&amp;sid=$lsid&amp;quexsfilterinc=$questionnaire_id:$sample_import_id' class='btn btn-default fa btn-lime'>" . T_("Download data for this sample via Limesurvey") . "</a></div>";
+		print "&emsp;<a href='" .LIME_URL . "admin/admin.php?action=exportresults&amp;interviewer=1&amp;sid=$lsid&amp;quexsfilterinc=$questionnaire_id:$sample_import_id' class='btn btn-default fa btn-lime'>" . T_("Download data for this sample via Limesurvey") . "</a></div>";
 		//get sample vars
 		$sql = "SELECT sivr.var_id as value, sivr.var as description
 		FROM `sample_import_var_restrict` as sivr

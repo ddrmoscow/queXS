@@ -4227,18 +4227,15 @@ function getHeader($meta = false)
     $js_header_includes = array_unique($js_header_includes);
     $css_header_includes = array_unique($css_header_includes);
 
-	$interviewer=returnglobal('interviewer');
-	if (!empty($interviewer) || (isset($_SESSION['interviewer']) && $_SESSION['interviewer'] == true))
-	{
-		$interviewer = true;
-		$_SESSION['interviewer'] = true;
-	}
-	else
-	{
-		$interviewer = false;
-	}
-
-    if ($interviewer)
+  $interviewer=returnglobal('interviewer');
+  if (empty($interviewer))
+  {
+    $interviewer = false;
+  }
+  if (!isset($_SESSION['interviewer'])) {
+    $_SESSION['interviewer'] = $interviewer;
+  }
+     if ($SESSION['interviewer'])
     {
     	$js_header_includes[] = '/../../js/popup.js'; //queXS Addition
 	    include_once("quexs.php");
@@ -6751,7 +6748,7 @@ function usedTokens($token)
     $utresult = true;
     $query = "SELECT tid, usesleft from {$dbprefix}tokens_$surveyid WHERE token=".db_quoteall($token);
 
-    $result=db_execute_assoc($query,null,true);
+    $result=db_execute_assoc($query,false,true);
     if ($result !== false) {
         $row=$result->FetchRow();
         if ($row['usesleft']>0) $utresult = false;

@@ -21,7 +21,9 @@ include_once("quexs.php"); //queXS funcitons
 $LEMdebugLevel=0;   // LEM_DEBUG_TIMING;    // (LEM_DEBUG_TIMING + LEM_DEBUG_VALIDATION_SUMMARY + LEM_DEBUG_VALIDATION_DETAIL);
 $LEMskipReprocessing=false; // true if used GetLastMoveResult to avoid generation of unneeded extra JavaScript
 
-if ($interviewer)
+$surveyMode=quexs_get_survey_mode($clienttoken);
+
+if ($_SESSION['interviewer'] || $surveyMode === false)
 {
 	switch ($thissurvey['format'])
 	{
@@ -37,8 +39,6 @@ if ($interviewer)
 	        break;
 	}
 }
-else
-	$surveyMode=quexs_get_survey_mode($clienttoken);
 
 $radix=getRadixPointData($thissurvey['surveyls_numberformat']);
 $radix = $radix['seperator'];
@@ -88,16 +88,15 @@ else
     {
         $totalquestions = buildsurveysession();
         LimeExpressionManager::StartSurvey($thissurvey['sid'], $surveyMode, $surveyOptions, false,$LEMdebugLevel);
-//      $_SESSION['step'] = 0;
-        //if ($surveyMode == 'survey') {
-          //  $move = "movenext"; // to force a call to NavigateForwards()
-       // }
-       // else if (isset($thissurvey['showwelcome']) && $thissurvey['showwelcome'] == 'N') {
+      $_SESSION['step'] = 0;
+        if ($surveyMode == 'survey') {
+            $move = "movenext"; // to force a call to NavigateForwards()
+        }
+        else if (isset($thissurvey['showwelcome']) && $thissurvey['showwelcome'] == 'N') {
                 //If explicitply set, hide the welcome screen
-         //       $_SESSION['step'] = 0;
                 $_SESSION['step'] = 1;
                 $move = "movenext";
-           // }
+            }
     }
 
     if (!isset($_SESSION['totalsteps'])) {$_SESSION['totalsteps']=0;}
@@ -245,9 +244,9 @@ else
     if ($thissurvey['active'] == "Y" && isset($_POST['saveall']))
     {
         // must do this here to process the POSTed values
-        //$moveResult = LimeExpressionManager::JumpTo($_SESSION['step'],false);   // by jumping to current step, saves data so far
+        $moveResult = LimeExpressionManager::JumpTo($_SESSION['step'],false);   // by jumping to current step, saves data so far
 
-        //showsaveform(); // generates a form and exits, awaiting input
+        showsaveform(); // generates a form and exits, awaiting input
         if(!tableExists('tokens_'.$surveyid) || $thissurvey['anonymized']=='Y' || (tableExists('tokens_'.$surveyid) && $thissurvey['tokenanswerspersistence'] == 'N' ))
         {
             $moveResult = LimeExpressionManager::JumpTo($_SESSION['step'],false,true,false,false,true);   // by jumping to current step, saves data so far
@@ -468,7 +467,7 @@ else
 		//queXS Addition
 		include_once("quexs.php");
 		  
-		if ($interviewer)
+		if ($_SESSION['interviewer'])
 		{
 			$quexs_url = get_start_interview_url(); 
 			$url = str_replace("{STARTINTERVIEWURL}", $quexs_url, $url);
@@ -718,11 +717,11 @@ echo sDefaultSubmitHandler();
 
 if ($surveyMode == 'survey')
 {
-//    if(isset($thissurvey['showwelcome']) && $thissurvey['showwelcome'] == 'N') {
+    if(isset($thissurvey['showwelcome']) && $thissurvey['showwelcome'] == 'N') {
         //Hide the welcome screen if explicitly set
- //   } else {
-   //     echo templatereplace(file_get_contents("$thistpl/welcome.pstpl"))."\n";
-   // }
+    } else {
+        echo templatereplace(file_get_contents("$thistpl/welcome.pstpl"))."\n";
+    }
 
     if ($thissurvey['anonymized'] == "Y")
     {

@@ -355,7 +355,7 @@ INSERT INTO `day_of_week` (`day_of_week`) VALUES(7);
 
 CREATE TABLE `extension` (
   `extension_id` int(11) NOT NULL AUTO_INCREMENT,
-  `extension` char(10) COLLATE utf8_unicode_ci NOT NULL,
+  `extension` char(20) COLLATE utf8_unicode_ci NOT NULL,
   `password` varchar(255) COLLATE utf8_unicode_ci DEFAULT NULL,
   `status` tinyint(1) NOT NULL DEFAULT '0',
   `current_operator_id` bigint(20) DEFAULT NULL,
@@ -1105,6 +1105,10 @@ INSERT INTO `outcome` (`outcome_id`, `aapor_id`, `description`, `default_delay_m
 INSERT INTO `outcome` (`outcome_id`, `aapor_id`, `description`, `default_delay_minutes`, `outcome_type_id`, `tryanother`, `contacted`, `tryagain`, `eligible`, `require_note`, `calc`, `default`, `permanent`) VALUES (44,'2.30','Max call attempts reached (Eligible)',0,1,0,1,1,1,0,'O',1,0);
 INSERT INTO `outcome` (`outcome_id`, `aapor_id`, `description`, `default_delay_minutes`, `outcome_type_id`, `tryanother`, `contacted`, `tryagain`, `eligible`, `require_note`, `calc`, `default`, `permanent`) VALUES (45,'2.30','Max calls reached (Eligible)',0,1,0,1,1,1,0,'O',1,0);
 
+-- Auto increment start from 100 for manual entries
+
+ALTER TABLE `outcome` AUTO_INCREMENT = 100;
+
 -- --------------------------------------------------------
 
 --
@@ -1353,6 +1357,7 @@ CREATE TABLE `questionnaire_sample_timeslot` (
   `questionnaire_id` bigint(20) NOT NULL,
   `sample_import_id` bigint(20) NOT NULL,
   `availability_group_id` bigint(20) NOT NULL,
+  `weight` int(11) NOT NULL DEFAULT '1',
   PRIMARY KEY (`questionnaire_id`,`availability_group_id`,`sample_import_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
 
@@ -1365,6 +1370,7 @@ CREATE TABLE `questionnaire_sample_timeslot` (
 CREATE TABLE `questionnaire_timeslot` (
   `questionnaire_id` bigint(20) NOT NULL,
   `availability_group_id` bigint(20) NOT NULL,
+  `weight` int(11) NOT NULL DEFAULT '1',
   PRIMARY KEY (`questionnaire_id`,`availability_group_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
 
@@ -1441,7 +1447,9 @@ CREATE TABLE `sample_import_var_restrict` (
   `var` char(128) COLLATE utf8_unicode_ci DEFAULT NULL,
   `type` smallint(10) unsigned NOT NULL,
   `restrict` tinyint(1) NOT NULL DEFAULT '0',
-  PRIMARY KEY (`var_id`)
+  PRIMARY KEY (`var_id`),
+  KEY (`var`),
+  KEY (`sample_import_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
 
 -- --------------------------------------------------------
@@ -1491,7 +1499,8 @@ CREATE TABLE `sample_var` (
   `var_id` bigint(20) unsigned NOT NULL,
   `val` varchar(256) COLLATE utf8_unicode_ci NOT NULL,
   PRIMARY KEY (`sample_id`,`var_id`),
-  KEY `sample_id` (`sample_id`)
+  KEY `sample_id` (`sample_id`),
+  KEY `var_id` (`var_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
 
 -- --------------------------------------------------------
@@ -1519,6 +1528,7 @@ INSERT INTO `sample_var_type` (`type`, `description`, `table`) VALUES(5, 'Postco
 INSERT INTO `sample_var_type` (`type`, `description`, `table`) VALUES(6, 'Respondent first name', '');
 INSERT INTO `sample_var_type` (`type`, `description`, `table`) VALUES(7, 'Respondent last name', '');
 INSERT INTO `sample_var_type` (`type`, `description`, `table`) VALUES(8, 'Email address', '');
+INSERT INTO `sample_var_type` (`type`, `description`, `table`) VALUES(9, 'Token', '');
 
 -- --------------------------------------------------------
 
@@ -1553,7 +1563,9 @@ CREATE TABLE `shift` (
   `start` datetime NOT NULL,
   `end` datetime NOT NULL,
   PRIMARY KEY (`shift_id`),
-  KEY `questionnaire_id` (`questionnaire_id`)
+  KEY `questionnaire_id` (`questionnaire_id`),
+  KEY `start` (`start`),
+  KEY `end` (`end`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
 
 -- --------------------------------------------------------

@@ -79,6 +79,8 @@ $js_foot = array(
 				);
 global $db;
 
+$error = "";
+
 if (isset($_GET['questionnaire_id']) && isset($_GET['sample'])  && isset($_GET['call_max']) && isset($_GET['call_attempt_max']))
 {
 	//need to add sample to questionnaire
@@ -104,6 +106,7 @@ if (isset($_GET['questionnaire_id']) && isset($_GET['sample'])  && isset($_GET['
 	if (isset($_GET['generatecases']))
 	{
 		include_once("../functions/functions.operator.php");
+		include_once("../functions/functions.limesurvey.php");
 
 		$db->StartTrans();
 
@@ -137,17 +140,63 @@ if (isset($_GET['questionnaire_id']) && isset($_GET['sample'])  && isset($_GET['
 
 		$db->Execute($sql);
 
-		//generate one case for each sample record and set outcome to 41
-		$sql = "SELECT sample_id
-			FROM sample
-			WHERE import_id = '$sid'";
+		//generate one case for each sample record and set outcome to goutcome 
+		$sql = "SELECT s.sample_id, sv.val as email
+			FROM sample as s
+			LEFT JOIN (sample_var as sv, sample_import_var_restrict as sivr) ON (sv.sample_id = s.sample_id and sv.var_id = sivr.var_id and sivr.type = 8)
+			WHERE s.import_id = '$sid'";
 
 		$rs = $db->GetAll($sql);
+    
+    $onlyvalidemail = false;
+    if (isset($_GET['validemail'])) {
+      $onlyvalidemail = true;
+    }
 
+    $goutcome = bigintval($_GET['goutcome']);
+
+    $count = 0;
 		foreach($rs as $r)
-		{
+    {
+      $count++;
 		  set_time_limit(30);			
-		  add_case($r['sample_id'],$questionnaire_id,"NULL",$testing,41, true);
+	//only if a valid email
+      if (!$onlyvalidemail || validate_email($r['email'])) {
+        $case_id = add_case($r['sample_id'],$questionnaire_id,"NULL",$testing,$goutcome, true);
+	      if ($case_id === false) {
+        	$error .= "<br/>Failed to add case for record #$count";    
+        } else {
+          //add call and call attempt records
+          $resp_id = 0;
+
+          $sql = "SELECT respondent_id
+                  FROM respondent
+                  WHERE case_id = $case_id";
+          $rsp = $db->GetOne($sql);
+
+          if (!empty($rsp)) {
+            $resp_id = $rsp;
+          }
+
+          $sql = "INSERT INTO call_attempt (case_id,operator_id,respondent_id,start,end)
+                  VALUES ($case_id, 1, $resp_id, CONVERT_TZ(NOW(),'System','UTC'), CONVERT_TZ(NOW(),'System','UTC'))";
+          $db->Execute($sql);
+
+          $call_attempt_id = $db->Insert_ID();
+
+          $sql = "INSERT INTO `call` (operator_id,respondent_id,case_id,contact_phone_id,call_attempt_id,start,end,outcome_id,state)
+                  VALUES (1,$resp_id,$case_id,0,$call_attempt_id,CONVERT_TZ(NOW(),'System','UTC'),CONVERT_TZ(NOW(),'System','UTC'),$goutcome,5)";
+          $db->Execute($sql);
+
+          $call_id = $db->Insert_ID();
+
+          $sql = "UPDATE `case`
+                  SET last_call_id = $call_id
+                  WHERE case_id = $case_id";
+
+          $db->Execute($sql);
+        }
+  	  }
 		}
 
 		$db->CompleteTrans();
@@ -306,6 +355,9 @@ xhtml_head(T_("Assign samples to questionnaires"),true,$css,$js_head,false,false
 
 print "<a href='' onclick='history.back();return false;' class='btn btn-default pull-left'><i class='fa fa-chevron-left fa-lg text-primary'></i>&emsp;" . T_("Go back") . "</a>";
 
+if (!empty($error)) {
+  print "<div class='alert text-danger'>$error</div>";
+}
 	
 $questionnaire_id = false;
 if (isset($_GET['questionnaire_id'])) 	$questionnaire_id = bigintval($_GET['questionnaire_id']);	
@@ -327,7 +379,7 @@ if ($questionnaire_id != false)
 			CASE WHEN q.answering_machine_messages = 0 THEN '". TQ_("Never") . "' ELSE q.answering_machine_messages END as answering_machine_messages,
 			CASE WHEN q.allow_new = 0 THEN '". TQ_("No") ."' ELSE '".TQ_("Yes")."' END as allow_new,
 			CONCAT('<a href=\"?edit=edit&amp;questionnaire_id=$questionnaire_id&amp;rsid=', si.sample_import_id ,'\" data-toggle=\'tooltip\' title=\'". TQ_("Edit") ."\' class=\'btn center-block\'><i class=\'fa fa-pencil-square-o fa-lg\'></i></a>') as edit,
-			CONCAT('<a href=\'\' data-toggle=\'confirmation\' data-title=\'".TQ_("Are you sure?")."\' data-btnOkLabel=\'&emsp;".TQ_("Yes")."\' data-btnCancelLabel=\'&emsp;".TQ_("No")."\' data-placement=\'top\' data-href=\"?questionnaire_id=$questionnaire_id&amp;rsid=', si.sample_import_id ,'\" class=\'btn center-block\'><i class=\'fa fa-chain-broken fa-lg\' data-toggle=\'tooltip\' title=\'". TQ_("Click to unassign") ."\'></i></a>') as unassign
+			CONCAT('<a href=\'\' data-toggle=\'confirmation\' data-title=\'".TQ_("ARE YOU SURE?")."\' data-btnOkLabel=\'&emsp;".TQ_("Yes")."\' data-btnCancelLabel=\'&emsp;".TQ_("No")."\' data-placement=\'top\' data-href=\"?questionnaire_id=$questionnaire_id&amp;rsid=', si.sample_import_id ,'\" class=\'btn center-block\'><i class=\'fa fa-chain-broken fa-lg\' data-toggle=\'tooltip\' title=\'". TQ_("Click to unassign") ."\'></i></a>') as unassign
 			FROM questionnaire_sample as q, sample_import as si
 			WHERE q.sample_import_id = si.sample_import_id
 			AND q.questionnaire_id = '$questionnaire_id'
@@ -375,7 +427,13 @@ if ($questionnaire_id != false)
 	$qs = $db->GetAll($sql);
 	
 	if (!empty($qs))
-	{
+  {
+    $sql = "SELECT outcome_id,description
+            FROM outcome
+            WHERE 1";
+
+    $ou = $db->GetAll($sql);
+
 		print "<div class='clearfix '></div>";
 		print "<div class='panel-body form-group'><h3 class='text-primary col-lg-offset-4'>" . T_("Add a sample to this questionnaire:") . "</h3>";
 		?>
@@ -406,10 +464,23 @@ if ($questionnaire_id != false)
 		
 		<?php $self_complete = $db->GetOne("SELECT self_complete FROM questionnaire WHERE questionnaire_id = '$questionnaire_id'");
 		if ($self_complete) {?>
-		<label for="generatecases" class="control-label col-lg-4"><?php echo T_("Generate cases for all sample records and set outcome to 'Self completion email invitation sent'?");?></label>
-		<div class="col-sm-1"><input type="checkbox" id = "generatecases" name="generatecases" class="col-sm-1" data-toggle="toggle" data-size="small" data-on="<?php echo T_("Yes");?>" data-off="<?php echo T_("No");?>" data-width="85"/></div>
+		<label for="generatecases" class="control-label col-lg-4"><?php echo T_("Generate cases for all sample records?");?></label>
+		<div class="col-sm-1"><input onchange="if(this.checked==true) {$('#ve').show();} else {$('#ve').hide();}" type="checkbox" id = "generatecases" name="generatecases" class="col-sm-1" data-toggle="toggle" data-size="small" data-on="<?php echo T_("Yes");?>" data-off="<?php echo T_("No");?>" data-width="85"/></div>
 		<em class="control-label"> * <?php echo T_("Ideal if you intend to send an email invitation to sample members before attempting to call using queXS");?></em>
 		<div class='clearfix '></div></br>
+
+    <div id='ve' style='display:none'>
+
+    <label for="goutcome" class="control-label col-lg-4"><?php echo T_("Select an outcome to assign generated cases to");?></label>
+		<div class="col-lg-4"><select name="goutcome" id="goutcome" class="form-control " >
+		<?php foreach($ou as $q) { $sel =""; if ($q['outcome_id'] == 41) { $sel="selected='selected'";} print "<option $sel value=\"{$q['outcome_id']}\">{$q['description']}</option>"; } ?> </select></div>
+    <div class='clearfix '></div></br>
+    
+    <label for="validemail" class="control-label col-lg-4"><?php echo T_("Only generate cases where there is a valid email attached?");?></label>
+		<div class="col-sm-1"><input type="checkbox" checked="checked" id = "validemail" name="validemail" class="col-sm-1" data-toggle="toggle" data-size="small" data-on="<?php echo T_("Yes");?>" data-off="<?php echo T_("No");?>" data-width="85"/></div>
+		<div class='clearfix '></div></br>
+
+    </div>
 		<?php }?>
 
 		<input type="hidden" name="questionnaire_id" value="<?php print($questionnaire_id);?>"/>

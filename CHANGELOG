@@ -1,3 +1,192 @@
+queXS 1.16.0 - Changes since 1.15.10
+
+Fixed issue: Extension column not wide enough for long extensions
+Fixed issue: System sorting giving low priority where some quotas exist and not others
+Fixed issue: Database queries slow when downloading metadata
+
+New feature: Assign cases to any operator to be called next in queue
+New feature: Unassign all cases in the queue in one click
+
+Database changes:
+ALTER TABLE `extension` CHANGE `extension` `extension` CHAR( 20 ) NOT NULL;
+ALTER TABLE `sample_var` ADD INDEX ( `var_id` );
+
+queXS 1.15.10 - Changes since 1.15.9
+
+Fixes some bugs including optimising the questionnaire outcome page queries. Translations have also been updated (Thank you!)
+
+Fixed issue: Missing number of records per page in sample search
+Fixed issue: Unable to un-assign cases when cases in case queue and extensions set to automatically unassign
+Fixed issue: Questionnaire outcomes page slow with many shifts
+
+Database changes:
+ALTER TABLE `shift` ADD INDEX ( `start` );
+ALTER TABLE `shift` ADD INDEX ( `end` );
+
+queXS 1.15.9 - Changes since 1.15.8
+
+Fixes various bugs
+
+Fixed issue: Max call attempts outcome overriding Refusal outcomes
+Fixed issue: Stale cases not ending if technically still on a call
+Fixed issue: GET requests when adding case notes can cause duplicate requests
+Fixed issue: Not enough sample detail in assign outcomes to cases page
+
+queXS 1.15.8 - Changes since 1.15.7
+
+Quick bug fix for missing file in release
+
+Fixed issue: Missing overallperformance.php file
+
+queXS 1.15.7 - Changes since 1.15.6
+
+A new overall performance report has been added along with the ability to download the searched portion of the sample to a file.
+
+New feature: Overall performance report
+New feature: Download searched sample to file
+New feature: Added docker-compose template
+
+Fixed issue: Performance reporting with unended calls has undefined result (was using NOW())
+Fixed issue: Total call time limited to MySQL SEC_TO_TIME function
+
+queXS 1.15.6 - Changes since 1.15.5
+
+Various bug fixes (see below), along with the ability to add records to an existing sample.
+
+Fixed issue: Data output including shift reports failing
+Fixed issue: Missing appointments displaying even where currently assigned to an operator
+Fixed issue: lp:1703319 QUEXS_URL Address Defenition
+Fixed issue: lp:1702874 DEFAULT_LOCALE not defined on admin
+
+New feature: Add records to an existing sample
+
+Translations have also been updated - thank you!
+
+queXS 1.15.5 - Changes since 1.15.4
+
+A release to fix quotas set within Limesurvey (broken as of 1.14.0). Also fixes to supervisor appointment creation and display.
+
+Fixed issue: Fatal error in rs_quota_end
+Fixed issue: Limesurvey quotas not working
+Fixed issue: Default end of appointment is in 10 years (changed to 1 hour)
+Fixed issue: Display appointments failing if call attempt auto removed (supervisor page)
+
+queXS 1.15.4 - Changes since 1.15.3
+
+This release fixes bugs with the display of appointments for the administrator and the sample searching function.
+
+Fixed issue: Display appointments failing if call attempt auto removed
+Fixed issue: Sample search not working with large number of columns
+
+Translations have also been updated - thanks again for your contributions!
+
+queXS 1.15.3 - Changes since 1.15.2
+
+This release fixes some bugs and adds some features including greatly speeding up sample searching
+
+New feature: Allow selection of outcome code when generating cases
+New feature: Decide to create cases whether email valid or not
+New feature: Server side sample querying to speed up sample searching
+
+Fixed issue: Can't delete sample
+Fixed issue: Case status incorrectly reporting time when case available
+
+Translations have also been updated - thank you for your contributions!
+
+queXS 1.15.2 - Changes since 1.15.1
+
+This release fixes some bugs found since 1.15.1
+
+Fixed issue: Not opting out of web when opting out of CATI
+Fixed issue: Refreshing appointment screen added more appointments
+Fixed issue: Timeslot scheduling not working where no calls yet in timeslot 
+Fixed issue: Case sometimes ends unintentionally due to page requests
+
+queXS 1.15.1 - Changes since 1.15.0
+
+This release supports PHP 7 (ADODB has been updated). Administrators can assign sample records to cases where not yet assigned. 
+
+New feature: Assign sample records to cases via search function
+
+Fixed issue: Make sure call and call attempt records created when creating cases
+Fixed issue: Add support for PHP7, update ADODB
+
+queXS 1.15.0 - Changes since 1.14.4
+
+This release contains a weighted timeslot feature to allow for varying numbers of attempts in particular timeslots, 
+as well as features and fixes to web/CATI mode integration.
+
+New feature: Weighted timeslots (allow more attempts in particular timeslots)
+New feature: Allow for tokens to be imported in a queXS sample
+
+Fixed issue: Database structure not optimised for sample_var_import_restrict table
+Fixed issue: Cases being generated without a valid email address when importing to Limesurvey
+Fixed issue: Limesurvey save form not displaying
+Fixed issue: Limesurvey welcome screen not displaying
+Fixed issue: Admin permissions not propogating to Limesurvey
+Fixed issue: Mode of delivery (single page, group by group, etc) not determined if no token in queXS
+
+Database changes required:
+
+INSERT INTO `sample_var_type` (`type`, `description`, `table`) VALUES(9, 'Token', '');
+ALTER TABLE `sample_import_var_restrict` ADD INDEX ( `var` ) ;
+ALTER TABLE `sample_import_var_restrict` ADD INDEX ( `sample_import_id` ) ;
+ALTER TABLE `questionnaire_timeslot` ADD `weight` INT( 11 ) NOT NULL DEFAULT '1';
+ALTER TABLE `questionnaire_sample_timeslot` ADD `weight` INT( 11 ) NOT NULL DEFAULT '1';
+
+
+queXS 1.14.4 - Changes since 1.14.3
+
+Fourth bug fix release.
+
+Fixed issue: Wrong template appearing for self complete respondents
+Fixed issue: Appointment minimum time was 15 minutes
+Fixed issue: Admin page failing to appear due to PHP notice
+
+Translations have also been updated - thank you again!
+
+queXS 1.14.3 - Changes since 1.14.2
+
+The third bug fix release for the 1.14 series of queXS.
+
+Fixed issue: More than 2 character long locale code not being recognised
+Fixed issue: Method return value error
+Fixed issue: Numbers starting with 0 were being stripped
+Fixed issue: Appointments not working when no shifts scheduled and local timezone is different from respondent
+Fixed issue: lp:1620421 SQL not compatible with ONLY_FULL_GROUP_BY mode
+
+New feature: Allow operators to see upcoming appointments and assign to themselves if necessary
+
+Database update (Please note - if you are having issues with custom outcomes - please run this code on your database):
+
+ALTER TABLE `outcome` AUTO_INCREMENT = 100;
+
+
+queXS 1.14.2 - Changes since 1.14.1
+
+A bug fix release for the 1.14 series of queXS
+
+Fixed issue: Call attempts can exist with no calls - clear them out
+Fixed issue: Samples with call attempt time slots assigned will still draw new numbers out of defined times
+Fixed issue: Importing CSV with empty columns at end of file causing failure
+Fixed issue: Cannot delete outcomes
+
+Translations have been updated - thank you for your continued contributions!
+
+
+queXS 1.14.1 - Changes since 1.14.0
+
+New feature: CAS Authentication
+
+Fixed bug: When self completing group by group or all-in-one, numeric key presses may change previous answers
+Fixed bug: lp:1528293 fix and translated outcomes descriptions, added 'outcome id' to output (thanks Alex)
+Fixed bug: lp:1527201 output to csv in dataoutput.php (thanks Alex)
+Fixed bug: lp:1527201 (thanks Alex)
+Fixed bug: Removed extraneous documentation
+
+Thank you again to those who contributed translations - these have been updated.
+
+
 queXS 1.14.0 - Changes since 1.13.1
 
 New feature: Session based authentication instead of web server authentication

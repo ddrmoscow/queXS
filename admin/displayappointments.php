@@ -88,7 +88,7 @@ if (isset($_GET['start']) && isset($_GET['end']) && isset($_GET['update']))
 
 		// create a call attempt
 		$sql = "INSERT INTO call_attempt (call_attempt_id,case_id,operator_id,respondent_id,start,end)
-		VALUES (NULL,$case_id,$operator_id,$respondent_id,CONVERT_TZ(NOW(),@@session.time_zone,'UTC'),CONVERT_TZ(NOW(),@@session.time_zone,'UTC'))";
+		VALUES (NULL,$case_id,$operator_id,$respondent_id,CONVERT_TZ(NOW(),'System','UTC'),CONVERT_TZ(NOW(),'System','UTC'))";
 		$db->Execute($sql);
 		
 		$call_attempt_id = $db->Insert_ID();
@@ -138,7 +138,8 @@ if ( (isset($_GET['appointment_id']) && isset($_GET['case_id'])) ||(isset($_GET[
 	else
 	{
 		$sql = "SELECT  CONVERT_TZ(NOW(),'SYSTEM',r.Time_zone_name) as startdate, 
-						CONVERT_TZ(DATE_ADD(NOW(), INTERVAL 10 YEAR),'SYSTEM',r.Time_zone_name) as enddate,
+						CONVERT_TZ(DATE_ADD(NOW(), INTERVAL 10 YEAR),'SYSTEM',r.Time_zone_name) as enddatem,
+						CONVERT_TZ(DATE_ADD(NOW(), INTERVAL 1 HOUR),'SYSTEM',r.Time_zone_name) as enddate,
 						r.respondent_id, ca.contact_phone_id
 						FROM `case` as c, `respondent` as r, `call` as ca
 						WHERE c.case_id = '$case_id'
@@ -147,6 +148,7 @@ if ( (isset($_GET['appointment_id']) && isset($_GET['case_id'])) ||(isset($_GET[
 		$rs = $db->GetRow($sql); 
 		
 		$startdate = $rs['startdate'];
+		$enddatem = $rs['enddatem'];
 		$enddate = $rs['enddate'];
 		$respondent_id = $rs['respondent_id'];
 		if (!isset($contact_phone_id)) $contact_phone_id = $rs['contact_phone_id'];
@@ -201,7 +203,7 @@ if ( (isset($_GET['appointment_id']) && isset($_GET['case_id'])) ||(isset($_GET[
 				hourGrid: 2,
 				minuteGrid: 10,
 				minDate: '$startdate',
-				maxDate: '$enddate'
+				maxDate: '$enddatem'
 				});});</script>";
 
 			print "<form action='?' method='get' class='form-horizontal form-group'>";
@@ -231,7 +233,7 @@ if ( (isset($_GET['appointment_id']) && isset($_GET['case_id'])) ||(isset($_GET[
 
 			print "<div class='col-lg-4' id='addPhone' style='display:none'>
 						<div class='col-lg-6' id=''>
-							<input type=\"tel\" maxlength=\"10\" pattern=\"[0-9]{10}\" class='form-control col-lg-2 ' name='addphonenumber'  />
+							<input type=\"tel\" class='form-control col-lg-2 ' name='addphonenumber'  />
 						</div>
 					</div>";
 //*end option
@@ -289,24 +291,25 @@ if ( (isset($_GET['appointment_id']) && isset($_GET['case_id'])) ||(isset($_GET[
 else {
 	$operator_id = get_operator_id();
 	$subtitle = T_("Appointments"); 
-	xhtml_head(T_("Display Appointments"),true,$css,$js_head,false,30);
+	xhtml_head(T_("Display Appointments"),true,$css,$js_head,false);
 	print "<h3>" . T_("All appointments (with times displayed in your time zone)") . "</h3>";
 
-	$sql = "SELECT q.description, si.description as smpl, CONVERT_TZ(a.start,'UTC',@@session.time_zone) as start, CONVERT_TZ(a.end,'UTC',@@session.time_zone) as end,CONCAT(r.firstName, ' ', r.lastName) as resp, IFNULL(ou.description,'" . TQ_("Not yet called") . "') as outcome, oo.firstName as makerName, ooo.firstName as callerName, 
+	$sql = "SELECT MIN(q.description) as description, MIN(si.description) as smpl, MIN(CONVERT_TZ(a.start,'UTC',co.Time_zone_name)) as start, MIN(CONVERT_TZ(a.end,'UTC',co.Time_zone_name)) as end,MIN(CONCAT(r.firstName, ' ', r.lastName)) as resp, MIN( IFNULL(ou.description,'" . TQ_("Not yet called") . "')) as outcome, MIN(oo.firstName) as makerName, MIN(ooo.firstName) as callerName, 
 	CONCAT('<a href=\'supervisor.php?case_id=', c.case_id, '\'>', c.case_id, '</a>') as case_id, 
-	CONCAT('&emsp;<a href=\'\'><i class=\'fa fa-trash-o fa-lg text-danger\' toggle=\'confirmation\' data-placement=\'left\' data-href=\'?case_id=', c.case_id, '&amp;appointment_id=', a.appointment_id, '&amp;delete=delete\'  ></i></a>&emsp;') as link, 
-	CONCAT('&emsp;<a href=\'?case_id=', c.case_id, '&amp;appointment_id=', a.appointment_id, '\'><i class=\'fa fa-pencil-square-o fa-lg\' ></i></a>&emsp;') as edit,IFNULL(ao.firstName,'" . TQ_("Any operator") . "') as witho 
+	MIN(CONCAT('&emsp;<a href=\'\'><i class=\'fa fa-trash-o fa-lg text-danger\' toggle=\'confirmation\' data-title=\'" . TQ_("ARE YOU SURE?") . "\' data-btnOkLabel=\'" . TQ_("Yes") . "\' data-btnCancelLabel=\'" . TQ_("No") . "\' data-placement=\'left\' data-href=\'?case_id=', c.case_id, '&amp;appointment_id=', a.appointment_id, '&amp;delete=delete\'  ></i></a>&emsp;')) as link, 
+	MIN(CONCAT('&emsp;<a href=\'?case_id=', c.case_id, '&amp;appointment_id=', a.appointment_id, '\'><i class=\'fa fa-pencil-square-o fa-lg\' ></i></a>&emsp;')) as edit,MIN(IFNULL(ao.firstName,'" . TQ_("Any operator") . "')) as witho 
 	FROM appointment as a 
-	JOIN (`case` as c, respondent as r, questionnaire as q, operator as oo, call_attempt as cc, `sample` as s, sample_import as si) on (c.sample_id = s.sample_id and  a.case_id = c.case_id and a.respondent_id = r.respondent_id and q.questionnaire_id = c.questionnaire_id and a.call_attempt_id = cc.call_attempt_id and cc.operator_id =  oo.operator_id and si.sample_import_id = s.import_id) 
+	JOIN (`case` as c, respondent as r, questionnaire as q,  operator as co, `sample` as s, sample_import as si) on (c.sample_id = s.sample_id and a.case_id = c.case_id and a.respondent_id = r.respondent_id and q.questionnaire_id = c.questionnaire_id and si.sample_import_id = s.import_id) 
+	LEFT JOIN (call_attempt as cc, operator as oo) ON (cc.call_attempt_id = a.call_attempt_id AND oo.operator_id = cc.operator_id)
 	LEFT JOIN (`call` as ca, outcome as ou, operator as ooo) ON (ca.call_id = a.completed_call_id and ou.outcome_id = ca.outcome_id and ca.operator_id = ooo.operator_id) 
 	LEFT JOIN operator AS ao ON ao.operator_id = a.require_operator_id 
 	LEFT JOIN (questionnaire_sample_quota as qsq) on (s.import_id  = qsq.sample_import_id and c.questionnaire_id = qsq.questionnaire_id)
 	LEFT JOIN (questionnaire_sample_quota_row as qsqr) on (s.import_id = qsqr.sample_import_id  and c.questionnaire_id = qsqr.questionnaire_id)
-	WHERE q.enabled=1 AND si.enabled=1 AND a.end >= CONVERT_TZ(NOW(),'System','UTC') AND c.current_outcome_id IN (19,20,21,22)
+	WHERE q.enabled=1 AND si.enabled=1 AND a.end >= CONVERT_TZ(NOW(),'System','UTC') 
 	AND (qsq.quota_reached IS NULL OR qsq.quota_reached != 1)
 	AND (qsqr.quota_reached IS NULL OR qsqr.quota_reached != 1)
-	GROUP BY c.case_id ORDER BY a.start ASC";
-	
+	AND co.operator_id = '$operator_id'
+	GROUP BY a.appointment_id ORDER BY a.start ASC";
 	$rs = $db->GetAll($sql);
 	if (!empty($rs)) {
 		translate_array($rs,array("outcome"));
@@ -316,19 +319,21 @@ else {
 	
 	print "<h3 style='color:red'>" . T_("Missed appointments (with times displayed in your time zone)") . "</h3>";
 
-	$sql = "SELECT q.description, si.description as smpl, CONVERT_TZ(a.start,'UTC',@@session.time_zone) as start, CONVERT_TZ(a.end,'UTC',@@session.time_zone) as end, CONCAT(r.firstName, ' ', r.lastName) as resp, 
-	CONCAT('<a href=\'supervisor.php?case_id=', c.case_id, '\'>', c.case_id, '</a>') as case_id, 
-	CONCAT('&emsp;<a href=\'\'><i class=\'fa fa-trash-o fa-lg text-danger\' toggle=\'confirmation\' data-placement=\'left\' data-href=\'?case_id=', c.case_id, '&amp;appointment_id=', a.appointment_id, '&amp;delete=delete\'  ></i></a>&emsp;') as link, 
-	CONCAT('&emsp;<a href=\'?case_id=', c.case_id, '&amp;appointment_id=', a.appointment_id, '\'><i class=\'fa fa-pencil-square-o fa-lg\' ></i></a>&emsp;') as edit 
+	$sql = "SELECT MIN(q.description) as description, MIN(si.description) as smpl, MIN(CONVERT_TZ(a.start,'UTC',co.Time_zone_name)) as start, MIN(CONVERT_TZ(a.end,'UTC',co.Time_zone_name)) as end, MIN(CONCAT(r.firstName, ' ', r.lastName)) as resp, 
+	MIN(CONCAT('<a href=\'supervisor.php?case_id=', c.case_id, '\'>', c.case_id, '</a>')) as case_id, 
+	MIN(CONCAT('&emsp;<a href=\'\'><i class=\'fa fa-trash-o fa-lg text-danger\' toggle=\'confirmation\' data-title=\'" . TQ_("ARE YOU SURE?") . "\' data-btnOkLabel=\'" . TQ_("Yes") . "\' data-btnCancelLabel=\'" . TQ_("No") . "\' data-placement=\'left\' data-href=\'?case_id=', c.case_id, '&amp;appointment_id=', a.appointment_id, '&amp;delete=delete\'  ></i></a>&emsp;')) as link, 
+	MIN(CONCAT('&emsp;<a href=\'?case_id=', c.case_id, '&amp;appointment_id=', a.appointment_id, '\'><i class=\'fa fa-pencil-square-o fa-lg\' ></i></a>&emsp;')) as edit 
 	FROM appointment as a 
-	JOIN (`case` as c, respondent as r, questionnaire as q, `sample` as s, sample_import as si) on (a.case_id = c.case_id and a.respondent_id = r.respondent_id and q.questionnaire_id = c.questionnaire_id and s.sample_id = c.sample_id and s.import_id= si.sample_import_id) 
+	JOIN (`case` as c, respondent as r, questionnaire as q, `sample` as s, sample_import as si, operator as co) on (a.case_id = c.case_id and a.respondent_id = r.respondent_id and q.questionnaire_id = c.questionnaire_id and s.sample_id = c.sample_id and s.import_id= si.sample_import_id) 
 	LEFT JOIN (`call` as ca) ON (ca.call_id = a.completed_call_id)
 	LEFT JOIN (questionnaire_sample_quota as qsq) on (s.import_id  = qsq.sample_import_id and c.questionnaire_id = qsq.questionnaire_id)
 	LEFT JOIN (questionnaire_sample_quota_row as qsqr) on (s.import_id = qsqr.sample_import_id  and c.questionnaire_id = qsqr.questionnaire_id)
-	WHERE q.enabled=1 AND si.enabled=1 AND a.end < CONVERT_TZ(NOW(),'System','UTC') AND a.completed_call_id IS NULL AND c.current_outcome_id IN (19,20,21,22)
+	WHERE q.enabled=1 AND si.enabled=1 AND a.end < CONVERT_TZ(NOW(),'System','UTC') AND a.completed_call_id IS NULL
 	AND (qsq.quota_reached IS NULL OR qsq.quota_reached != 1 )
 	AND (qsqr.quota_reached IS NULL OR qsqr.quota_reached != 1)
-	GROUP BY c.case_id
+    AND co.operator_id = '$operator_id'
+    AND c.current_operator_id IS NULL
+	GROUP BY a.appointment_id
 	ORDER BY a.start ASC";
 	
 	$rs = $db->GetAll($sql);

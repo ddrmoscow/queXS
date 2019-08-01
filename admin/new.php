@@ -167,11 +167,11 @@ $_POST['import_file'] = false;
 <a href="questionnairelist.php" class="btn btn-default pull-left" ><i class="fa fa-list text-primary"></i>&emsp;<?php echo T_("Go to");?>&ensp;<?php echo T_("Questionnaire management");?> </a>
 	
 <?php	
-$sql = "SELECT s.sid as sid, CONCAT(s.sid,' -> ',sl.surveyls_title) AS title
+$sql = "SELECT DISTINCT s.sid as sid, CONCAT(s.sid,' -> ',sl.surveyls_title) AS title
 	FROM " . LIME_PREFIX . "surveys AS s
 	LEFT JOIN " . LIME_PREFIX . "surveys_languagesettings AS sl ON ( s.sid = sl.surveyls_survey_id)
-	WHERE s.active = 'Y'
-	GROUP BY s.sid";
+	WHERE s.active = 'Y'";
+
 $surveys = $db->GetAll($sql);
 
 if (!empty($surveys)){?>
@@ -196,7 +196,7 @@ if (!empty($surveys)){?>
 		</div>
 		<div class='col-sm-4'>
 			<strong><?php echo T_("or") ;?>&emsp;</strong>
-			<a class="btn btn-lime" href="<?php echo LIME_URL ;?>admin/admin.php?action=newsurvey"><i class="fa fa-lemon-o text-danger"></i>&emsp;<?php echo T_("Create an instrument in Limesurvey") ;?></a>
+			<a class="btn btn-lime" href="<?php echo LIME_URL ;?>admin/admin.php?action=newsurvey&amp;interviewer=1"><i class="fa fa-lemon-o text-danger"></i>&emsp;<?php echo T_("Create an instrument in Limesurvey") ;?></a>
 		</div>
 	</div>
 		
@@ -402,9 +402,9 @@ $ckeditorConfig = array("toolbar" => array(array("tokens","-","Source"),
 else { ?>
 		<div class='col-sm-6 col-sm-offset-1'>
 		<h3 class="alert alert-warning"> <?php echo T_("NO active Lime surveys available");?> </h3>
-			<a class="btn btn-lime btn-lg btn-block" href="<?php echo LIME_URL ;?>admin/admin.php?action=newsurvey"><i class="fa fa-lemon-o text-danger"></i>&emsp;<?php echo T_("Create an instrument in Limesurvey");?>  </a>
+			<a class="btn btn-lime btn-lg btn-block" href="<?php echo LIME_URL ;?>admin/admin.php?action=newsurvey&amp;interviewer=1"><i class="fa fa-lemon-o text-danger"></i>&emsp;<?php echo T_("Create an instrument in Limesurvey");?>  </a>
 			<h4 class="text-center"><?php echo T_("or"); ?></h4>
-			<a class="btn btn-lime btn-lg btn-block" href="<?php echo LIME_URL ;?>admin/admin.php?action=listsurveys"><i class="fa fa-lemon-o text-danger"></i>&emsp;<?php echo T_("Administer instruments with Limesurvey");?>  </a> 
+			<a class="btn btn-lime btn-lg btn-block" href="<?php echo LIME_URL ;?>admin/admin.php?action=listsurveys&amp;interviewer=1"><i class="fa fa-lemon-o text-danger"></i>&emsp;<?php echo T_("Administer instruments with Limesurvey");?>  </a> 
 		</div>
 <?php } ?>
 

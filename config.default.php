@@ -134,6 +134,12 @@ if (!defined('LIME_AUTO_ADVANCE')) define('LIME_AUTO_ADVANCE', true);
  */
 if (!defined('QUEXS_PATH')) define('QUEXS_PATH', '/quexs/');
 
+/**
+ * The port queXS is running on (default blank, use :8080 for example if using 
+ * port 8080)
+ */
+if (!defined('QUEXS_PORT')) define('QUEXS_PORT', '');
+
 $protocol = "http://";
 
 if (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' || $_SERVER['SERVER_PORT'] == 443) 
@@ -144,12 +150,12 @@ if (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' || $_SERVER['SERVER
 /**
  * The complete URL to limesurvey
  */
-if (!defined('LIME_URL')) define('LIME_URL', $protocol . $_SERVER['SERVER_NAME'] . QUEXS_PATH . LIME_PATH);
+if (!defined('LIME_URL')) define('LIME_URL', $protocol . $_SERVER['SERVER_NAME'] . QUEXS_PORT . QUEXS_PATH . LIME_PATH);
 
 /**
  * The complete URL to this copy of queXS
  */
-if (!defined('QUEXS_URL')) define('QUEXS_URL', $protocol . $_SERVER['SERVER_NAME'] . QUEXS_PATH);
+if (!defined('QUEXS_URL')) define('QUEXS_URL', $protocol . $_SERVER['SERVER_NAME'] . QUEXS_PORT . QUEXS_PATH);
 
 /**
  * The default locale (language)
@@ -204,6 +210,7 @@ if (!defined('TAB_CASENOTES')) define('TAB_CASENOTES', true);
 if (!defined('TAB_CALLLIST')) define('TAB_CALLLIST', true);
 if (!defined('TAB_SHIFTS')) define('TAB_SHIFTS', true);
 if (!defined('TAB_APPOINTMENTLIST')) define('TAB_APPOINTMENTLIST', true);
+if (!defined('TAB_MYAPPOINTMENTLIST')) define('TAB_MYAPPOINTMENTLIST', true);
 if (!defined('TAB_PERFORMANCE')) define('TAB_PERFORMANCE', true);
 if (!defined('TAB_CALLHISTORY')) define('TAB_CALLHISTORY', true);
 if (!defined('TAB_PROJECTINFO')) define('TAB_PROJECTINFO', true);
@@ -261,7 +268,7 @@ if (!defined('DB_USER')) define('DB_USER', 'quexs');
 if (!defined('DB_PASS')) define('DB_PASS', 'quexs');
 if (!defined('DB_HOST')) define('DB_HOST', 'localhost');
 if (!defined('DB_NAME')) define('DB_NAME', 'quexs');
-if (!defined('DB_TYPE')) define('DB_TYPE', 'mysqlt');
+if (!defined('DB_TYPE')) define('DB_TYPE', 'mysqli');
 
 /**
  * The prefix for the limesurvey database

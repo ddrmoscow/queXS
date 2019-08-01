@@ -124,8 +124,7 @@ while (!is_process_killed($process_id)) //check if process killed every $sleepin
   		$sql = "UPDATE `case`
   			SET current_operator_id = NULL, current_outcome_id = 5
   			WHERE case_id = '{$r['case_id']}'
-  			AND current_operator_id IS NOT NULL
-  			AND current_call_id IS NULL";
+  			AND current_operator_id IS NOT NULL";
   
   		$db->Execute($sql);
   
@@ -216,6 +215,33 @@ while (!is_process_killed($process_id)) //check if process killed every $sleepin
 
     $db->StartTrans();
 
+
+	//Delete all completed call attempts with no call in them
+	$sql = "SELECT ca.call_attempt_id FROM call_attempt as ca 
+		JOIN `case` as cs ON (cs.case_id = ca.case_id and cs.questionnaire_id = '$questionnaire_id')
+		LEFT JOIN `call` as c ON (c.call_attempt_id = ca.call_attempt_id) 
+		WHERE ca.end < CONVERT_TZ(NOW(),'System','UTC') 
+		AND c.call_attempt_id IS NULL";
+
+	$rs = $db->GetAll($sql);
+
+	$cad = count($rs);
+
+	if ($cad > 0)
+	{
+		foreach($rs as $r)
+		{
+			$sql = "DELETE from call_attempt 
+				WHERE call_attempt_id = '{$r['call_attempt_id']}'";
+			$db->Execute($sql);
+		}
+		print T_("Deleted") . " $cad " . T_("call attempts with no calls");
+	}
+	else
+	{
+		print T_("No call attempts without calls");
+	}
+
   	//Set all cases as unavailable
   	$sql = "UPDATE `case`
   		SET sortorder = NULL
@@ -248,11 +274,8 @@ while (!is_process_killed($process_id)) //check if process killed every $sleepin
 		WHERE c.current_operator_id IS NULL
 		AND c.questionnaire_id = '$questionnaire_id'
   		AND ((apn.appointment_id IS NOT NULL) OR casa.case_id IS NULL OR (ava.day_of_week = DAYOFWEEK(CONVERT_TZ(NOW(),'System',s.Time_zone_name)) AND TIME(CONVERT_TZ(NOW(), 'System' , s.Time_zone_name)) >= ava.start AND TIME(CONVERT_TZ(NOW(), 'System' , s.Time_zone_name)) <= ava.end  ))
-		
-		AND ((apn.appointment_id IS NOT NULL) OR qast.questionnaire_id IS NULL OR ((SELECT COUNT(*) FROM availability WHERE availability.availability_group_id = qast.availability_group_id AND (availability.day_of_week = DAYOFWEEK(CONVERT_TZ(NOW(),'System',s.Time_zone_name)) AND TIME(CONVERT_TZ(NOW(), 'System' , s.Time_zone_name)) >= availability.start AND TIME(CONVERT_TZ(NOW(), 'System' , s.Time_zone_name)) <= availability.end)) >= 1 AND (SELECT COUNT(call_attempt_id) FROM `call_attempt`, availability WHERE call_attempt.case_id = c.case_id AND (availability.availability_group_id = qast.availability_group_id AND (availability.day_of_week = DAYOFWEEK(CONVERT_TZ(call_attempt.start,'UTC',s.Time_zone_name)) AND TIME(CONVERT_TZ(call_attempt.start, 'UTC' , s.Time_zone_name)) >= availability.start AND TIME(CONVERT_TZ(call_attempt.start, 'UTC' , s.Time_zone_name)) <= availability.end))) = (   SELECT (SELECT COUNT(*) FROM availability, call_attempt WHERE call_attempt.case_id = c.case_id AND availability.availability_group_id = availability_group.availability_group_id AND (availability.day_of_week = DAYOFWEEK(CONVERT_TZ(call_attempt.start,'UTC',s.Time_zone_name)) AND TIME(CONVERT_TZ(call_attempt.start, 'UTC' , s.Time_zone_name)) >= availability.start AND TIME(CONVERT_TZ(call_attempt.start, 'UTC' , s.Time_zone_name)) <= availability.end))  as cou FROM availability_group, questionnaire_timeslot WHERE questionnaire_timeslot.questionnaire_id = c.questionnaire_id AND availability_group.availability_group_id = questionnaire_timeslot.availability_group_id ORDER BY cou ASC LIMIT 1)))
-		
-		AND ((apn.appointment_id IS NOT NULL) OR qasts.questionnaire_id IS NULL OR ((SELECT COUNT(*) FROM availability WHERE availability.availability_group_id = qasts.availability_group_id AND (availability.day_of_week = DAYOFWEEK(CONVERT_TZ(NOW(),'System',s.Time_zone_name)) AND TIME(CONVERT_TZ(NOW(), 'System' , s.Time_zone_name)) >= availability.start AND TIME(CONVERT_TZ(NOW(), 'System' , s.Time_zone_name)) <= availability.end)) >= 1 AND (SELECT COUNT(call_attempt_id) FROM `call_attempt`, availability WHERE call_attempt.case_id = c.case_id AND (availability.availability_group_id = qasts.availability_group_id AND (availability.day_of_week = DAYOFWEEK(CONVERT_TZ(call_attempt.start,'UTC',s.Time_zone_name)) AND TIME(CONVERT_TZ(call_attempt.start, 'UTC' , s.Time_zone_name)) >= availability.start AND TIME(CONVERT_TZ(call_attempt.start, 'UTC' , s.Time_zone_name)) <= availability.end))) = (   SELECT (SELECT COUNT(*) FROM availability, call_attempt WHERE call_attempt.case_id = c.case_id AND availability.availability_group_id = availability_group.availability_group_id AND (availability.day_of_week = DAYOFWEEK(CONVERT_TZ(call_attempt.start,'UTC',s.Time_zone_name)) AND TIME(CONVERT_TZ(call_attempt.start, 'UTC' , s.Time_zone_name)) >= availability.start AND TIME(CONVERT_TZ(call_attempt.start, 'UTC' , s.Time_zone_name)) <= availability.end))  as cou FROM availability_group, questionnaire_sample_timeslot WHERE questionnaire_sample_timeslot.questionnaire_id = c.questionnaire_id AND questionnaire_sample_timeslot.sample_import_id = si.sample_import_id AND availability_group.availability_group_id = questionnaire_sample_timeslot.availability_group_id ORDER BY cou ASC LIMIT 1)))
-		
+		AND ((apn.appointment_id IS NOT NULL) OR qast.questionnaire_id IS NULL OR ((SELECT COUNT(*) FROM availability WHERE availability.availability_group_id = qast.availability_group_id AND (availability.day_of_week = DAYOFWEEK(CONVERT_TZ(NOW(),'System',s.Time_zone_name)) AND TIME(CONVERT_TZ(NOW(), 'System' , s.Time_zone_name)) >= availability.start AND TIME(CONVERT_TZ(NOW(), 'System' , s.Time_zone_name)) <= availability.end)) >= 1 AND IFNULL((SELECT FLOOR(COUNT(call_attempt_id) / questionnaire_timeslot.weight) FROM `call_attempt`, availability, questionnaire_timeslot WHERE call_attempt.case_id = c.case_id AND (availability.availability_group_id = qast.availability_group_id AND questionnaire_timeslot.questionnaire_id = c.questionnaire_id AND questionnaire_timeslot.availability_group_id = availability.availability_group_id AND (availability.day_of_week = DAYOFWEEK(CONVERT_TZ(call_attempt.start,'UTC',s.Time_zone_name)) AND TIME(CONVERT_TZ(call_attempt.start, 'UTC' , s.Time_zone_name)) >= availability.start AND TIME(CONVERT_TZ(call_attempt.start, 'UTC' , s.Time_zone_name)) <= availability.end))),0) = (SELECT FLOOR((SELECT COUNT(*) FROM availability, call_attempt WHERE call_attempt.case_id = c.case_id AND availability.availability_group_id = availability_group.availability_group_id AND (availability.day_of_week = DAYOFWEEK(CONVERT_TZ(call_attempt.start,'UTC',s.Time_zone_name)) AND TIME(CONVERT_TZ(call_attempt.start, 'UTC' , s.Time_zone_name)) >= availability.start AND TIME(CONVERT_TZ(call_attempt.start, 'UTC' , s.Time_zone_name)) <= availability.end)) / questionnaire_timeslot.weight)  as cou FROM availability_group, questionnaire_timeslot WHERE questionnaire_timeslot.questionnaire_id = c.questionnaire_id AND availability_group.availability_group_id = questionnaire_timeslot.availability_group_id ORDER BY cou ASC LIMIT 1)))
+		AND ((apn.appointment_id IS NOT NULL) OR qasts.questionnaire_id IS NULL OR ((SELECT COUNT(*) FROM availability WHERE availability.availability_group_id = qasts.availability_group_id AND (availability.day_of_week = DAYOFWEEK(CONVERT_TZ(NOW(),'System',s.Time_zone_name)) AND TIME(CONVERT_TZ(NOW(), 'System' , s.Time_zone_name)) >= availability.start AND TIME(CONVERT_TZ(NOW(), 'System' , s.Time_zone_name)) <= availability.end)) >= 1 AND IFNULL((SELECT FLOOR(COUNT(call_attempt_id) / questionnaire_sample_timeslot.weight) FROM `call_attempt`, availability, questionnaire_sample_timeslot WHERE call_attempt.case_id = c.case_id AND (availability.availability_group_id = qasts.availability_group_id AND questionnaire_sample_timeslot.questionnaire_id = c.questionnaire_id AND questionnaire_sample_timeslot.availability_group_id = availability.availability_group_id AND (availability.day_of_week = DAYOFWEEK(CONVERT_TZ(call_attempt.start,'UTC',s.Time_zone_name)) AND TIME(CONVERT_TZ(call_attempt.start, 'UTC' , s.Time_zone_name)) >= availability.start AND TIME(CONVERT_TZ(call_attempt.start, 'UTC' , s.Time_zone_name)) <= availability.end))),0) = (SELECT FLOOR((SELECT COUNT(*) FROM availability, call_attempt WHERE call_attempt.case_id = c.case_id AND availability.availability_group_id = availability_group.availability_group_id AND (availability.day_of_week = DAYOFWEEK(CONVERT_TZ(call_attempt.start,'UTC',s.Time_zone_name)) AND TIME(CONVERT_TZ(call_attempt.start, 'UTC' , s.Time_zone_name)) >= availability.start AND TIME(CONVERT_TZ(call_attempt.start, 'UTC' , s.Time_zone_name)) <= availability.end)) / questionnaire_sample_timeslot.weight) as cou FROM availability_group, questionnaire_sample_timeslot WHERE questionnaire_sample_timeslot.questionnaire_id = c.questionnaire_id AND questionnaire_sample_timeslot.sample_import_id = si.sample_import_id AND availability_group.availability_group_id = questionnaire_sample_timeslot.availability_group_id ORDER BY cou ASC LIMIT 1)))
   		AND (a.call_id is NULL or (a.end < CONVERT_TZ(DATE_SUB(NOW(), INTERVAL ou.default_delay_minutes MINUTE),'System','UTC')))
   		AND ap.case_id is NULL
   		AND ((qsep.questionnaire_id is NULL) or qsep.exclude = 0)
@@ -262,7 +285,7 @@ while (!is_process_killed($process_id)) //check if process killed every $sleepin
   		AND ((apn.appointment_id IS NOT NULL) or qs.call_max = 0 or ((SELECT count(*) FROM `call` WHERE `call`.case_id = c.case_id) < qs.call_max))
     	AND (SELECT count(*) FROM `questionnaire_sample_quota` WHERE questionnaire_id = c.questionnaire_id AND sample_import_id = s.import_id AND quota_reached = 1) = 0
   		GROUP BY c.case_id
-			ORDER BY IF(ISNULL(apn.end),1,0),apn.end ASC, qsep.priority DESC, CONVERT_TZ(NOW(), 'System' , s.Time_zone_name) DESC , a.start ASC, qs.sort_order ASC";
+            ORDER BY IF(ISNULL(apn.end),1,0),apn.end ASC, IFNULL(qsep.priority,50) DESC, qs.sort_order ASC, CONVERT_TZ(NOW(), 'System' , s.Time_zone_name) DESC , a.start ASC";
     
   	$rs = $db->GetAll($sql);
 
@@ -297,11 +320,15 @@ while (!is_process_killed($process_id)) //check if process killed every $sleepin
       LEFT JOIN call_restrict as cr on (cr.day_of_week = DAYOFWEEK(CONVERT_TZ(NOW(), 'System' , s.Time_zone_name)) and TIME(CONVERT_TZ(NOW(), 'System' , s.Time_zone_name)) >= cr.start and TIME(CONVERT_TZ(NOW(), 'System' , s.Time_zone_name)) <= cr.end)
       LEFT JOIN shift as sh on (sh.questionnaire_id = q.questionnaire_id and (CONVERT_TZ(NOW(),'System','UTC') >= sh.start) AND (CONVERT_TZ(NOW(),'System','UTC') <= sh.end))
       LEFT JOIN questionnaire_sample_exclude_priority AS qsep ON (qsep.questionnaire_id = qs.questionnaire_id AND qsep.sample_id = s.sample_id)
+		  LEFT JOIN questionnaire_timeslot AS qast ON (qast.questionnaire_id = q.questionnaire_id)
+  		LEFT JOIN questionnaire_sample_timeslot AS qasts ON (qasts.questionnaire_id = q.questionnaire_id AND qasts.sample_import_id = si.sample_import_id)
       WHERE c.case_id is NULL
       AND ((qsep.questionnaire_id IS NULL) or qsep.exclude = 0)
       AND !(q.restrict_work_shifts = 1 AND sh.shift_id IS NULL)
       AND !(si.call_restrict = 1 AND cr.day_of_week IS NULL)
       AND (SELECT count(*) FROM `questionnaire_sample_quota` WHERE questionnaire_id = qs.questionnaire_id AND sample_import_id = s.import_id AND quota_reached = 1) = 0
+   		AND (qast.questionnaire_id IS NULL OR ((SELECT COUNT(*) FROM availability WHERE availability.availability_group_id = qast.availability_group_id AND (availability.day_of_week = DAYOFWEEK(CONVERT_TZ(NOW(),'System',s.Time_zone_name)) AND TIME(CONVERT_TZ(NOW(), 'System' , s.Time_zone_name)) >= availability.start AND TIME(CONVERT_TZ(NOW(), 'System' , s.Time_zone_name)) <= availability.end)) >= 1))
+			AND (qasts.questionnaire_id IS NULL OR ((SELECT COUNT(*) FROM availability WHERE availability.availability_group_id = qasts.availability_group_id AND (availability.day_of_week = DAYOFWEEK(CONVERT_TZ(NOW(),'System',s.Time_zone_name)) AND TIME(CONVERT_TZ(NOW(), 'System' , s.Time_zone_name)) >= availability.start AND TIME(CONVERT_TZ(NOW(), 'System' , s.Time_zone_name)) <= availability.end)) >= 1))
       GROUP BY s.sample_id,qs.questionnaire_id
       ORDER BY qsep.priority DESC, rand() * qs.random_select, qs.sort_order ASC";
           

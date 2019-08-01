@@ -130,16 +130,17 @@ if ( $embedded && $embedded_inc != '' )
 
 //queXS Addition
 //see who is doing this survey - an interviewer or the respondent directly
-$interviewer=returnglobal('interviewer');
-if (!empty($interviewer) || (isset($_SESSION['interviewer']) && $_SESSION['interviewer'] == true)) 
-{
-	$interviewer = true;
-	$_SESSION['interviewer'] = true;
-}
-else
-{
-	$interviewer = false;
-}
+//
+
+  $interviewer=returnglobal('interviewer');
+  if (empty($interviewer))
+  {
+    $interviewer = false;
+  }
+  if (!isset($_SESSION['interviewer'])) {
+    $_SESSION['interviewer'] = $interviewer;
+  }
+ 
 
 
 
@@ -505,8 +506,9 @@ else
 }
 
 
+$qtmp = quexs_get_template($clienttoken);
 
-if ($interviewer)
+if ($_SESSION['interviewer'] || $qtmp === false)
 {
 	//SET THE TEMPLATE DIRECTORY
 	if (!$thissurvey['templatedir'])
@@ -520,8 +522,8 @@ if ($interviewer)
 }
 else
 {
-	$thissurvey['templatedir'] = quexs_get_template($clienttoken);
-	$thistpl=sGetTemplatePath(quexs_get_template($clienttoken));
+	$thissurvey['templatedir'] = $qtmp;
+	$thistpl=sGetTemplatePath($qtmp);
 }
 
 
