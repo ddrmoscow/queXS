@@ -1,4 +1,4 @@
- <?php
+<?php
  /**
  * Display an index of Admin tools
  *
@@ -29,14 +29,14 @@
  */
 
 /**
- * Language file
- */
-include ("../lang.inc.php");
-
-/**
  * Config file
  */
 include ("../config.inc.php");
+
+/**
+ * Language file
+ */
+include ("../lang.inc.php");
  
 /**
  * Authentication file
@@ -102,7 +102,7 @@ include ("../functions/functions.operator.php");
 			<ul class="dropdown-menu" role="menu">
               <li><a href="?g=5&amp;page=operatorlist.php?edit=<?php print get_operator_id(); ?>"><i class="fa fa-cogs fa-fw "></i>&ensp;<?php print T_("Settings"); ?></a></li>
 <!---			  <li><a href="../screenloc.php"><i class="fa fa-lock fa-fw "></i>&ensp;<?php print T_("Lock Screen"); ?></a></li> -->
-              <li><a href="../include/limesurvey/admin/admin.php?action=logout"><i class="fa fa-sign-out fa-fw "></i>&ensp;<?php print T_("Logout"); ?> </a></li>
+              <li><a href="../login.php?action=logout"><i class="fa fa-sign-out fa-fw "></i>&ensp;<?php print T_("Logout"); ?> </a></li>
             </ul> 
           </li>
         </ul>
@@ -119,17 +119,16 @@ include ("../functions/functions.operator.php");
 		  <li><a class="" href="?"><i class="fa fa-tachometer fa-lg"></i><span><?php print T_("Dashboard") ;?></span></a></li>
           <li class="has_sub"><a href="" class=""><i class="fa fa-list-alt fa-lg"></i><span class="arrow"><?php print T_("Questionnairies") ;?></span></a>
           <ul style="<?php if ($g == 1) echo "display:block";?>">
-				<li><a href="?g=1&amp;page=<?php echo LIME_URL ;?>admin/admin.php?action=newsurvey"><i class="fa fa-file-text-o lime fa-fw"></i><?php print T_("Create an instrument in Limesurvey") ;?></a></li>
                 <li><a href="?g=1&amp;page=new.php"><i class="fa fa-plus-circle fa-fw"></i><?php print T_("Create a new questionnaire") ;?></a></li>
                 <li><a href="?g=1&amp;page=questionnairelist.php"><i class="fa fa-list fa-fw"></i><?php print T_("Questionnaire management") ;?></a></li>
 			    <li><a href="?g=1&amp;page=set_outcomes.php?qid=0"><i class="fa fa-list-ol fa-fw"></i><?php print T_("Set questionnaire outcomes") ;?></a></li>
-                <li><a href="?g=1&amp;page=<?php echo LIME_URL ;?>admin/admin.php"><i class="fa fa-lemon-o lime fa-fw"></i><?php print T_("Administer instruments with Limesurvey") ;?></a></li>
                 <li><a href="?g=1&amp;page=questionnaireprefill.php"><i class="fa fa-thumb-tack fa-fw"></i><?php print T_("Pre-fill questionnaire") ;?></a></li>
               </ul>
 		  </li>
 		  <li class="has_sub"><a href="" class=""><i class="fa fa-book fa-lg"></i><span><?php print T_("Samples") ;?></span></a>
               <ul style="<?php if ($g == 2) echo "display:block";?>">
                 <li><a href="?g=2&amp;page=import.php"><i class="fa fa-upload fa-fw"></i><?php print T_("Import a sample file") ;?></a></li>
+                <li><a href="?g=2&amp;page=updatesample.php"><i class="fa fa-plus fa-fw"></i><?php print T_("Add to a sample file") ;?></a></li>
                 <li><a href="?g=2&amp;page=samplelist.php"><i class="fa fa-list fa-fw"></i><?php print T_("Sample management") ;?></a></li>
                 <li><a href="?g=2&amp;page=samplesearch.php"><i class="fa fa-search fa-fw"></i><?php print T_("Search the sample") ;?></a></li>
                 <li><a href="?g=2&amp;page=assignsample.php"><i class="fa fa-link fa-fw"></i><?php print T_("Assign samples to questionnaires") ;?></a></li>
@@ -169,6 +168,7 @@ include ("../functions/functions.operator.php");
                 <li><a href="?g=6&amp;page=shiftreport.php"><i class="fa fa-th-large fa-fw"></i><?php print T_("Shift reports") ;?></a></li>
                 <li><a href="?g=6&amp;page=quotareport.php" ><i class="fa fa-filter fa-fw"></i><?php print T_("Quota report") ;?></a></li>
                 <li><a href="?g=6&amp;page=outcomes.php"><i class="fa fa-bar-chart fa-fw"></i><?php print T_("Questionnaire outcomes") ;?></a></li>
+                <li><a href="?g=6&amp;page=overallreport.php"><i class="fa fa-pie-chart fa-fw"></i><?php print T_("Overall performance report") ;?></a></li>
                 <li><a href="?g=6&amp;page=dataoutput.php"><i class="fa fa-download fa-fw"></i><?php print T_("Data output") ;?></a></li>
               </ul>
           </li>
@@ -187,6 +187,7 @@ include ("../functions/functions.operator.php");
           </li>
           <li class="has_sub"><a href="" class=""><i class="fa fa-lg fa-gear"></i><span><?php print T_("System settings") ;?></span></a>
               <ul style="<?php if ($g == 9) echo "display:block";?>">
+			    <li><a href="?g=9&amp;page=remote.php"><i class="fa fa-server fa-fw"></i><?php print T_("Questionnaire service (RPC)") ;?></a></li>
 			    <li><a href="?g=9&amp;page=set_outcomes.php?default"><i class="fa fa-list-ol fa-fw"></i><?php print T_("Set default outcomes") ;?></a></li>
                 <li><a href="?g=9&amp;page=timezonetemplate.php"><i class="fa fa-globe fa-fw"></i><?php print T_("Set default timezone list") ;?></a></li>
 				<li><a href="?g=9&amp;page=availabilitygroup.php"><i class="fa fa-clock-o fa-fw"></i><?php print T_("Manage Time slots") ;?></a></li>

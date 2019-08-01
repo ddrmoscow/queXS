@@ -113,7 +113,11 @@ if (isset($_GET['endcase']))
 
 	$db->CompleteTrans(); //need to complete here otherwise getting the case later will fail
 
-	$db->StartTrans();
+  //redirect back here
+  header('Location: index.php');
+  exit();
+
+	//$db->StartTrans();
 	//if ($db->HasFailedTrans()) {print "<p>FAILED AT ENDCASE</p>"; exit();}
 }
 
@@ -291,6 +295,15 @@ xhtml_object($data,"main-content");
 	  <div id="div-callhistory" class="tabberdiv"><?php xhtml_object("callhistory.php","main-callhistory");?></div>
      </div>
 <?php  }?>
+
+<?php  if (TAB_MYAPPOINTMENTLIST) { ?>
+     <div class="tabbertab <?php  if ((DEFAULT_TAB == 'myappointmentlist' && !$appointment) || (DEFAULT_TAB_APPOINTMENT == 'myappointmentlist' && $appointment)) 
+					print "tabbertabdefault"; ?>">
+	  <h2><?php  echo T_("My appointments"); ?></h2>
+	  <div id="div-myappointmentlist" class="tabberdiv"><?php xhtml_object("myappointments.php","main-myappointmentlist");?></div>
+     </div>
+<?php  }?>
+
 
 <?php  if (TAB_PROJECTINFO) { ?>
      <div class="tabbertab <?php  if ((DEFAULT_TAB == 'projectinfo' && !$appointment) || (DEFAULT_TAB_APPOINTMENT == 'projectinfo' && $appointment)) 

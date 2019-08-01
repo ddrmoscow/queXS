@@ -1,3 +1,313 @@
+queXS 2.2.0 - Changes since 2.1.5
+
+Fixed issue: Extension column not wide enough for long extensions
+Fixed issue: System sorting giving low priority where some quotas exist and not others
+
+New feature: Assign cases to any operator to be called next in queue
+New feature: Unassign all cases in the queue in one click
+
+Database changes:
+ALTER TABLE `extension` CHANGE `extension` `extension` CHAR( 20 ) NOT NULL;
+ALTER TABLE `sample_var` ADD INDEX ( `var_id` );
+
+queXS 2.1.5 - Changes since 2.1.4
+
+Fixes some bugs including optimising the questionnaire outcome page queries. Translations have also been updated (Thank you!)
+
+Fixed issue: Missing number of records per page in sample search
+Fixed issue: Missing "; " at end of line 75 on rs_quota_end.php
+Fixed issue: Unable to un-assign cases when cases in case queue and extensions set to automatically unassign
+Fixed issue: Questionnaire outcomes page slow with many shifts
+
+Database changes:
+ALTER TABLE `shift` ADD INDEX ( `start` );
+ALTER TABLE `shift` ADD INDEX ( `end` );
+
+
+queXS 2.1.4 - Changes since 2.1.3
+
+Fixes various bugs
+
+Fixed issue: Max call attempts outcome overriding Refusal outcomes
+Fixed issue: Stale cases not ending if technically still on a call
+Fixed issue: GET requests when adding case notes can cause duplicate requests
+Fixed issue: Not enough sample detail in assign outcomes to cases page
+
+queXS 2.1.3 - Changes since 2.1.2
+
+A new overall performance report has been added along with the ability to download the searched portion of the sample to a file.
+
+New feature: Overall performance report
+New feature: Download searched sample to file
+New feature: Added docker-compose template
+
+Fixed issue: Performance reporting with unended calls has undefined result (was using NOW())
+Fixed issue: Total call time limited to MySQL SEC_TO_TIME function
+
+queXS 2.1.2 - Changes since 2.1.1
+
+Various bug fixes (see below), along with the ability to add records to an existing sample.
+
+Fixed issue: Data output including shift reports failing
+Fixed issue: Missing appointments displaying even where currently assigned to an operator
+Fixed issue: lp:1703319 QUEXS_URL Address Defenition
+Fixed issue: lp:1702874 DEFAULT_LOCALE not defined on admin
+Fixed issue: Make default end of appointment in 1 hour
+Fixed issue: Display appointments failing if call attempt auto removed (supervisor page)
+
+New feature: Add records to an existing sample
+
+queXS 2.1.1 - Changes since 2.1.0
+
+This release fixes bugs with the display of appointments for the administrator and the sample searching function.
+
+Fixed issue: Display appointments failing if call attempt auto removed
+Fixed issue: Sample search not working with large number of columns
+
+queXS 2.1.0 - Changes since 2.0.1
+
+This release adds the ability to send sample variables from queXS to the Limesurvey participant table (database changes required).
+Other new features include significantly faster sample searching (server side) especially for large samples.
+
+Bugs fixed include not being able to delete a sample, and passwords not being able to be updated.
+
+New feature: Allow selection of outcome code when generating cases
+New feature: Choose Limesurvey attributes to assign sample records to on case creation
+New feature: Decide to create cases whether email valid or not
+New feature: Server side sample querying to speed up sample searching
+
+Fixed issue: Can't delete sample
+Fixed issue: Cannot update password
+Fixed issue: Typo in lime_rpc function
+Fixed issue: Case status incorrectly reporting time when case available
+
+Database changes required:
+
+CREATE TABLE IF NOT EXISTS `remote_sample_var` (
+ `id` int(11) NOT NULL AUTO_INCREMENT,
+ `var_id` bigint(20) NOT NULL,
+ `questionnaire_id` bigint(20) NOT NULL,
+ `field` text COLLATE utf8_unicode_ci NOT NULL,
+ PRIMARY KEY (`id`),
+ UNIQUE KEY `var_id` (`var_id`,`questionnaire_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci AUTO_INCREMENT=1 ;
+
+INSERT INTO remote_sample_var (var_id,questionnaire_id,field)
+SELECT sv.var_id,qs.questionnaire_id,CASE WHEN sv.type = 6 THEN 'firstname' WHEN sv.type = 7 THEN 'lastname' WHEN sv.type = 8 THEN 'email' WHEN sv.type = 9 THEN 'token' END
+FROM questionnaire_sample as qs
+JOIN sample_import_var_restrict as sv ON (sv.sample_import_id = qs.sample_import_id AND sv.type IN (6,7,8,9));
+
+
+queXS 2.0.1 - Changes since 2.0.0
+
+This release includes fixes ported from the 1.x branch
+
+Fixed issue: Not opting out of web when opting out of CATI
+Fixed issue: Refreshing appointment screen added more appointments
+Fixed issue: Timeslot scheduling not working where no calls yet in timeslot 
+Fixed issue: Case sometimes ends unintentionally due to page requests
+Fixed issue: Make sure call and call attempt records created when creating cases
+
+New feature: Assign sample records to cases via search function
+
+queXS 2.0.0 - Changes since 1.15.0
+
+queXS 2.0.0 removes the included version of Limesurvey 1.91+ and instead relies on an existing install of Limesurvey
+of at least version 2.0, with the JSON remote control API enabled to collect data.
+
+Therefore queXS 2.0.0 has an additional requirement of a separate installation of Limesurvey with the JSON RPC API enabled.
+
+Both the 1.x and 2.x branches will continue to be maintained for now. Be warned: If you choose to upgrade to the 2.0.0 version,
+there is "no going back" unless you restore from a backup.
+
+Due to the previous tight integration of queXS and Limesurvey, some noteable features are NOT supported in the 2.x series, including:
+
+- Data export:
+* Exporting data "by sample" or "by questionnaire" from Limesurvey directly
+* queXS paradata export from within Limesurvey
+
+- Integration:
+* {SAMPLE:xxx} replacement fields in Limesurvey (you will need to replace these with {TOKEN:attribute_1}, {TOKEN:attribute_2}, etc)
+* queXS replacement fields including: CALLATTEMPTS, ONAPPOINTMENT, PERIODOFDAY, APPOINTMENTDATE, APPOINTMENTTIME, APPOINTMENTNUMBER, PERCCOMPLETE, ENDINTERVIEWURL, STARTINTERVIEWURL
+* Altering of template / mode of delivery for self complete surveys versus interviewer administered surveys
+
+- Interface:
+* Automatically proceeding to next question on answer selection (no need to press "NEXT")
+* Custom limesurvey 1.92+ templates will not work with the latest Limesurvey
+
+Please note that you may be able to implement some of these in Limesurvey directly or work around them. If they are critical for your operations,
+please do not proceed with the upgrade to queXS 2.0.0
+
+
+
+Upgrade procedure from 1.15.0 to 2.0.0:
+
+1. Browse to System settings and stop the system wide case sorting process
+2. Browse to VoIP settings (if enabled) and stop the VoIP monitoring process
+3. IMPORTANT: Backup the queXS database
+4. IMPORTANT: Backup the queXS files
+5. Run the following commands on your database:
+
+CREATE TABLE `remote` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `description` text COLLATE utf8_unicode_ci NOT NULL,
+  `rpc_url` text COLLATE utf8_unicode_ci NOT NULL,
+  `username` text COLLATE utf8_unicode_ci NOT NULL,
+  `password` text COLLATE utf8_unicode_ci NOT NULL,
+  `type` varchar(16) COLLATE utf8_unicode_ci NOT NULL DEFAULT 'limesurvey' COMMENT 'type of host',
+  `entry_url` text COLLATE utf8_unicode_ci NOT NULL COMMENT 'entry url for interviewers',
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB  DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+
+CREATE TABLE `users` (
+  `uid` int(11) NOT NULL AUTO_INCREMENT,
+  `users_name` varchar(64) COLLATE utf8_unicode_ci NOT NULL DEFAULT '',
+  `password` blob NOT NULL,
+  `full_name` varchar(50) COLLATE utf8_unicode_ci NOT NULL,
+  `email` varchar(320) COLLATE utf8_unicode_ci DEFAULT NULL,
+  `superadmin` tinyint(1) NOT NULL DEFAULT '0',
+  PRIMARY KEY (`uid`),
+  UNIQUE KEY `users_name` (`users_name`)
+) ENGINE=InnoDB  DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+
+INSERT INTO `users` (uid,users_name,password,full_name,email,superadmin)
+SELECT uid,users_name,password,full_name,email,superadmin
+FROM lime_users;
+
+CREATE TABLE `failed_login_attempts` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `ip` varchar(37) COLLATE utf8_unicode_ci NOT NULL,
+  `last_attempt` varchar(20) COLLATE utf8_unicode_ci NOT NULL,
+  `number_attempts` int(11) NOT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+
+ALTER TABLE `questionnaire` ADD `remote_id` INT NOT NULL DEFAULT '1', ADD INDEX ( `remote_id`);
+
+ALTER TABLE lime_saved_control DROP INDEX identifier;
+
+
+6. Download the latest version of Limesurvey: https://www.limesurvey.org/stable-release (This was tested with 2.64.1+170310)
+7. Extract the Limesurvey package to your webserver (separate directory to queXS)
+
+8. Edit the Limesurvey file:  application/controllers/admin/databaseupdate.php 
+	Comment out the line:  $this->_renderWrappedTemplate('update', $aViewUrls, $aData);
+	Uncomment the following lines:
+		        //$aData = array_merge($aData, $aViewUrls);
+		        //Yii::app()->getController()->renderPartial('databaseupdate/db', $aData);
+
+9. Give write permissions to tmp, upload, template, third_party/kcfinder/cache and application/config Limesurvey directories
+   - For example in Ubuntu: 
+	chown www-data:www-data -R tmp
+	chown www-data:www-data -R upload
+	chown www-data:www-data -R application/config
+	chown www-data:www-data -R templates
+	chown www-data:www-data -R third_party/kcfinder/cache/
+
+10. Browse to the Limesurvey installation and proceed with the installation up until the Database configuration page
+11. Enter in the database settings from your queXS installation (see the queXS config.inc.local.php file for details)
+12. Confirm the "table prefix" matches the default of: lime_
+13. Proceed to database upgrade
+14. Log in as the administrative user (default from queXS was: admin/password)
+15. Browse to Configuration -> Global Settings -> Interfaces
+16. Enable the JSON-RPC interface, and click on "Save"
+17. Take note of the URL, eg: https://localhost/limesurvey/index.php/admin/remotecontrol 
+
+Modify the the following SQL to suit your URL, username and password, then run it on the queXS database:
+
+INSERT INTO `remote` (id,description,rpc_url,username,password,entry_url)
+VALUES (1,'Limesurvey','https://localhost/limesurvey/index.php/admin/remotecontrol','admin','password','https://localhost/limesurvey/index.php');
+
+18. Take note of your new queXS URL, eg: https://localhost/quexs
+
+Modify the following SQL to suit your queXS URL, then run it on the database:
+
+UPDATE `lime_surveys_languagesettings` 
+SET surveyls_url = 'https://localhost/quexs/rs_project_end.php'
+WHERE surveyls_url = '{ENDINTERVIEWURL}';
+
+
+19. Extract queXS 2.0.0 to a directory on your web server
+20. Copy the config.inc.local.php file from your existing queXS installation
+21. Update the QUEXS_PATH config directive in config.inc.local.php if the path has changed
+22. Browse to the queXS 2.0.0 system in your browser
+23. Log in
+
+queXS 1.15.0 - Changes since 1.14.4
+
+This release contains a weighted timeslot feature to allow for varying numbers of attempts in particular timeslots, 
+as well as features and fixes to web/CATI mode integration.
+
+New feature: Weighted timeslots (allow more attempts in particular timeslots)
+New feature: Allow for tokens to be imported in a queXS sample
+
+Fixed issue: Database structure not optimised for sample_var_import_restrict table
+Fixed issue: Cases being generated without a valid email address when importing to Limesurvey
+Fixed issue: Limesurvey save form not displaying
+Fixed issue: Limesurvey welcome screen not displaying
+Fixed issue: Admin permissions not propogating to Limesurvey
+Fixed issue: Mode of delivery (single page, group by group, etc) not determined if no token in queXS
+
+Database changes required:
+
+INSERT INTO `sample_var_type` (`type`, `description`, `table`) VALUES(9, 'Token', '');
+ALTER TABLE `sample_import_var_restrict` ADD INDEX ( `var` ) ;
+ALTER TABLE `sample_import_var_restrict` ADD INDEX ( `sample_import_id` ) ;
+ALTER TABLE `questionnaire_timeslot` ADD `weight` INT( 11 ) NOT NULL DEFAULT '1';
+ALTER TABLE `questionnaire_sample_timeslot` ADD `weight` INT( 11 ) NOT NULL DEFAULT '1';
+
+queXS 1.14.4 - Changes since 1.14.3
+
+Fourth bug fix release.
+
+Fixed issue: Wrong template appearing for self complete respondents
+Fixed issue: Appointment minimum time was 15 minutes
+Fixed issue: Admin page failing to appear due to PHP notice
+
+Translations have also been updated - thank you again!
+
+queXS 1.14.3 - Changes since 1.14.2
+
+The third bug fix release for the 1.14 series of queXS.
+
+Fixed issue: More than 2 character long locale code not being recognised
+Fixed issue: Method return value error
+Fixed issue: Numbers starting with 0 were being stripped
+Fixed issue: Appointments not working when no shifts scheduled and local timezone is different from respondent
+Fixed issue: lp:1620421 SQL not compatible with ONLY_FULL_GROUP_BY mode
+
+New feature: Allow operators to see upcoming appointments and assign to themselves if necessary
+
+Database update (Please note - if you are having issues with custom outcomes - please run this code on your database):
+
+ALTER TABLE `outcome` AUTO_INCREMENT = 100;
+
+
+queXS 1.14.2 - Changes since 1.14.1
+
+A bug fix release for the 1.14 series of queXS
+
+Fixed issue: Call attempts can exist with no calls - clear them out
+Fixed issue: Samples with call attempt time slots assigned will still draw new numbers out of defined times
+Fixed issue: Importing CSV with empty columns at end of file causing failure
+Fixed issue: Cannot delete outcomes
+
+Translations have been updated - thank you for your continued contributions!
+
+
+queXS 1.14.1 - Changes since 1.14.0
+
+New feature: CAS Authentication
+
+Fixed bug: When self completing group by group or all-in-one, numeric key presses may change previous answers
+Fixed bug: lp:1528293 fix and translated outcomes descriptions, added 'outcome id' to output (thanks Alex)
+Fixed bug: lp:1527201 output to csv in dataoutput.php (thanks Alex)
+Fixed bug: lp:1527201 (thanks Alex)
+Fixed bug: Removed extraneous documentation
+
+Thank you again to those who contributed translations - these have been updated.
+
+
 queXS 1.14.0 - Changes since 1.13.1
 
 New feature: Session based authentication instead of web server authentication

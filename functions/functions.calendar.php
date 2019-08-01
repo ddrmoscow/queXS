@@ -291,7 +291,7 @@ function display_time($questionnaire_id,$respondent_id, $day, $month, $year, $ti
 		/**
 		 * Select shift start and end times for this day
 		 */
-		$sql = "SELECT s.shift_id, HOUR(TIME(CONVERT_TZ(s.start,'UTC',r.Time_zone_name))) as sh, MINUTE(TIME(CONVERT_TZ(s.start,'UTC',r.Time_zone_name))) as sm, !(DATE(CONVERT_TZ(NOW(),'System',r.Time_zone_name)) = DATE(CONVERT_TZ(s.start,'UTC',r.Time_zone_name))) as today,  HOUR(TIME(CONVERT_TZ(NOW(),'System',r.Time_zone_name))) as eh, MINUTE(TIME(CONVERT_TZ(NOW(),'System',r.Time_zone_name))) as em, (TIME_TO_SEC( TIMEDIFF( s.end, s.start)) / 900) as intervals, TIME(CONVERT_TZ(s.start,'UTC',r.Time_zone_name)) as start, TIME(CONVERT_TZ(s.end,'UTC',r.Time_zone_name)) as  end
+		$sql = "SELECT s.shift_id, HOUR(TIME(CONVERT_TZ(s.start,'UTC',r.Time_zone_name))) as sh, MINUTE(TIME(CONVERT_TZ(s.start,'UTC',r.Time_zone_name))) as sm, !(DATE(CONVERT_TZ(NOW(),'System',r.Time_zone_name)) = DATE(CONVERT_TZ(s.start,'UTC',r.Time_zone_name))) as today,  HOUR(TIME(CONVERT_TZ(NOW(),'System',r.Time_zone_name))) as eh, MINUTE(TIME(CONVERT_TZ(NOW(),'System',r.Time_zone_name))) as em, (TIME_TO_SEC( TIMEDIFF( s.end, s.start)) / 300) as intervals, TIME(CONVERT_TZ(s.start,'UTC',r.Time_zone_name)) as start, TIME(CONVERT_TZ(s.end,'UTC',r.Time_zone_name)) as  end
 					FROM shift as s, respondent as r, `case` as c
 					WHERE r.respondent_id = '$respondent_id'
 					AND r.case_id = c.case_id
@@ -302,7 +302,7 @@ function display_time($questionnaire_id,$respondent_id, $day, $month, $year, $ti
 					ORDER BY s.start ASC";
 	}
 	else
-		$sql = "SELECT  0 as sh, 0 as sm, !(DATE(CONVERT_TZ(NOW(),'System',r.Time_zone_name)) = DATE(CONVERT_TZ('$year-$month-$day 08:00:00','UTC',r.Time_zone_name))) as today,  HOUR(TIME(CONVERT_TZ(NOW(),'System',r.Time_zone_name))) as eh, MINUTE(TIME(CONVERT_TZ(NOW(),'System',r.Time_zone_name))) as em, (TIME_TO_SEC( TIMEDIFF( TIME( CONVERT_TZ(DATE_ADD( CURDATE( ) , INTERVAL '23:59:59' HOUR_SECOND ) , 'System', r.Time_zone_name ) ) , TIME( CONVERT_TZ( CURDATE(), 'System', r.Time_zone_name ) ) ) ) /900) as intervals, TIME(CONVERT_TZ(CURDATE(),'System',r.Time_zone_name)) as start, TIME(CONVERT_TZ(DATE_ADD( CURDATE( ) , INTERVAL '23:59:59' HOUR_SECOND ),'System',r.Time_zone_name)) as  end
+		$sql = "SELECT  0 as sh, 0 as sm, !(DATE(CONVERT_TZ(NOW(),'System',r.Time_zone_name)) = DATE(CONVERT_TZ('$year-$month-$day 08:00:00','UTC',r.Time_zone_name))) as today,  HOUR(TIME(CONVERT_TZ(NOW(),'System',r.Time_zone_name))) as eh, MINUTE(TIME(CONVERT_TZ(NOW(),'System',r.Time_zone_name))) as em, 288 as intervals, '00:00:00' as start, '23:59:59' as  end
 			FROM respondent as r
 			WHERE r.respondent_id = '$respondent_id'";
 
@@ -341,7 +341,7 @@ function display_time($questionnaire_id,$respondent_id, $day, $month, $year, $ti
 				print "<option value=\"?y=$year&amp;m=$month&amp;d=$day&amp;respondent_id=$respondent_id&amp;start=$t\" $selected>".$t."</option>";
 			}
 
-			$sm += 15;
+			$sm += 5;
 			if ($sm >= 60) 
 			{
 				$sh++;
@@ -364,7 +364,7 @@ function display_time($questionnaire_id,$respondent_id, $day, $month, $year, $ti
 			$sm = $r['sm'];
 			$intervals = $r['intervals'];
 	
-			// * Display only times after the start time and within the shift in 15 minute intervals
+			// * Display only times after the start time and within the shift in 5 minute intervals
 			for ($i = 0; $i <= $intervals-1; $i++)
 			{
 				$t = str_pad($sh,2,"0",STR_PAD_LEFT).":".str_pad($sm,2,"0",STR_PAD_LEFT).":00";
@@ -377,7 +377,7 @@ function display_time($questionnaire_id,$respondent_id, $day, $month, $year, $ti
 					print "<option value=\"?y=$year&amp;m=$month&amp;d=$day&amp;respondent_id=$respondent_id&amp;start=$time&amp;end=$t\" $selected>".$t."</option>";
 				}	
 				
-				$sm += 15;
+				$sm += 5;
 				if ($sm >= 60) 
 				{
 					$sh++;

@@ -42,6 +42,348 @@ include_once(dirname(__FILE__).'/../config.inc.php');
  */
 include_once(dirname(__FILE__).'/../db.inc.php');
 
+/**
+ * JSON RPC
+ */
+include_once(dirname(__FILE__).'/../include/JsonRPCClient.php');
+
+
+$limeRPC = "";
+$limeKey = "";
+
+function limerpc_init ($url,$user,$pass)
+{
+  global $limeRPC;
+  global $limeKey;
+
+  $limeRPC = new \org\jsonrpcphp\JsonRPCClient($url);
+
+  try {
+    $limeKey = $limeRPC->get_session_key($user,$pass);  
+  } catch (Exception $e) {
+    die($e->getMessage());  
+  }
+
+  if (is_array($limeKey) && isset($limeKey['status'])) {
+    die($limeKey['status']);
+  }
+  return true;
+}
+
+function limerpc_close()
+{
+    global $limeRPC;
+    global $limeKey;
+
+    if (!empty($limeRPC) && !empty($limeKey))
+        $limeRPC->release_session_key($limeKey);
+}
+
+function limerpc_init_qid($qid)
+{
+  global $db;
+
+  $sql = "SELECT r.rpc_url, r.username, r.password, r.description, q.lime_sid
+          FROM remote as r, questionnaire as q
+          WHERE q.questionnaire_id = '$qid'
+          AND q.remote_id = r.id";
+
+  $r = $db->GetRow($sql);
+
+  $ret = false;
+
+  if (limerpc_init($r['rpc_url'],$r['username'],$r['password']) === true) {
+      return $r['lime_sid'];
+  }
+
+  return false;
+
+}
+
+function lime_list_questions($qid)
+{
+  global $limeKey;
+  global $limeRPC;
+
+  $ret = false;
+  $lime_id = limerpc_init_qid($qid);
+
+  if ($lime_id !== false) {
+      $q = $limeRPC->list_questions($limeKey,$lime_id);
+      if (!isset($q['status'])) {
+        $ret = $q;
+      }
+  } 
+
+  limerpc_close();
+  return $ret;
+}
+
+
+function lime_list_answeroptions($qid,$qcode)
+{
+  global $limeKey;
+  global $limeRPC;
+
+  $ret = false;
+
+  $q = lime_list_questions($qid);
+
+  if ($q !== false)
+  {
+    
+    foreach($q as $tmp => $val) {
+      if ($val['title'] == $qcode) {
+        limerpc_init_qid($qid);
+        $qp = $limeRPC->get_question_properties($limeKey,$val['qid'],array('answeroptions'));
+        if (!isset($qp['status'])) {
+            $ret = $qp;
+        }
+        break;
+      }
+    }
+  }
+
+  limerpc_close();
+  return $ret;
+
+}
+
+function lime_send_email($case_id,$email,$firstname,$lastname) 
+{
+	global $db;
+  global $limeRPC;
+  global $limeKey;
+
+	$sql = "SELECT c.token,c.questionnaire_id
+		FROM `case` as c
+		WHERE c.case_id = '$case_id'";
+	
+	$rs = $db->GetRow($sql);
+
+  $token = $rs['token'];
+  $qid = $rs['questionnaire_id'];
+
+  $lime_id = limerpc_init_qid($qid);
+
+  $ret = false;
+
+  if ($lime_id !== false) {
+    $q = $limeRPC->set_participant_properties($limeKey,$lime_id,array('token' => $token),array('firstname' => $firstname, 'email' => $email, 'lastname' => $lastname));
+    if (!isset($q['status'])) {
+      //send email
+      $q2 = $limeRPC->invite_participants($limeKey, $lime_id, array($q['tid']));
+      if (!isset($q['status'])) {
+        $ret = true;
+      }
+    }
+  } 
+
+  limerpc_close();
+
+	return $ret;
+}
+
+function lime_set_token_properties($case_id,$params = array('emailstatus' => 'OptOut'))
+{
+	global $db;
+  global $limeRPC;
+  global $limeKey;
+
+	$sql = "SELECT c.token,c.questionnaire_id
+		FROM `case` as c
+		WHERE c.case_id = '$case_id'";
+	
+	$rs = $db->GetRow($sql);
+
+  $token = $rs['token'];
+  $qid = $rs['questionnaire_id'];
+
+  $lime_id = limerpc_init_qid($qid);
+
+  $ret = false;
+
+  if ($lime_id !== false) {
+    $q = $limeRPC->set_participant_properties($limeKey,$lime_id,array('token' => $token),$params);
+    if (!isset($q['status'])) {
+      $ret = true;
+    }
+  }
+
+  limerpc_close();
+
+	return $ret;
+}
+
+
+/** Get completed responses as an array based on the case_id
+ */
+function lime_get_responses_by_case($case_id,$fields = null)
+{
+	global $db;
+  global $limeRPC;
+  global $limeKey;
+
+	$sql = "SELECT c.token,c.questionnaire_id
+		FROM `case` as c
+		WHERE c.case_id = '$case_id'";
+	
+	$rs = $db->GetRow($sql);
+
+    $token = $rs['token'];
+    $qid = $rs['questionnaire_id'];
+
+    $lime_id = limerpc_init_qid($qid);
+
+    $ret = false;
+
+    if ($lime_id !== false) {
+      $q = $limeRPC->export_responses_by_token($limeKey,$lime_id,'json',$token,null,'complete','code','short',$fields);
+      if (!isset($q['status'])) {
+          $ret = json_decode(base64_decode($q));
+      }
+    } 
+
+  limerpc_close();
+
+	return $ret;
+
+
+}
+
+/** Get completd responses as an array based on the questionnaire
+ * indexed by token 
+ */
+function lime_get_responses_by_questionnaire($qid,$fields = null)
+{
+    global $limeRPC;
+    global $limeKey;
+
+    $lime_id = limerpc_init_qid($qid);
+
+    $ret = false;
+
+    if ($lime_id !== false) {
+      $q = $limeRPC->export_responses($limeKey,$lime_id,'json',null,'complete','code','short',null,null,$fields);
+      if (!isset($q['status'])) {
+          $ret = json_decode(base64_decode($q));
+      }
+    } 
+
+    limerpc_close();
+
+	return $ret;
+}
+
+function lime_get_token_attributes($qid)
+{
+  global $limeKey;
+  global $limeRPC;
+
+  $ret = false;
+  $lime_id = limerpc_init_qid($qid);
+
+  if ($lime_id !== false) {
+    //attribute array (test for all attributes)
+    for ($i = 1; $i < 256; $i++) {
+      $aa[] = "attribute_$i";
+    }
+    //add a dummy participant
+    $dtoken = 'QUEXSTESTTOKEN';
+    try {
+      $np = $limeRPC->add_participants($limeKey,$lime_id,array(array('firstname'=>$dtoken,'lastname'=>$dtoken)));
+    } catch (Exception $e) {
+      limerpc_close();
+      return false; 
+    }
+
+    if (isset($np[0]['tid'])) {
+      $ret = array_keys($np[0]); //array of data
+      $limeRPC->delete_participants($limeKey,$lime_id,array($np[0]['tid']));
+    }
+  }
+
+  limerpc_close();
+  return $ret;
+}
+
+function lime_add_token($qid,$params)
+{
+  global $limeKey;
+  global $limeRPC;
+
+  $ret = false;
+  $lime_id = limerpc_init_qid($qid);
+
+  if ($lime_id !== false) {
+    $l = $limeRPC->add_participants($limeKey,$lime_id,array($params),false); //don't create token
+    if (!isset($l['status'])) {
+        $ret = $l; //array of data
+    } 
+  }
+
+  limerpc_close();
+  return $ret;
+}
+
+function get_token_value($questionnaire_id,$token, $value = 'sent')
+{
+  global $limeKey;
+  global $limeRPC;
+
+  $ret = false;
+  $lime_id = limerpc_init_qid($questionnaire_id);
+
+  if ($lime_id !== false) {
+    $l = $limeRPC->get_participant_properties($limeKey,$lime_id,array('token'=>$token),array($value));
+    if (isset($l[$value])) {
+      $ret= $l[$value];
+    }
+  }
+
+  limerpc_close();
+  return $ret;
+}
+
+
+function get_survey_list ()
+{
+  global $db;
+  global $limeRPC;
+  global $limeKey;
+
+  //get a list of surveys from each possible remote
+
+  $sql = "SELECT id, rpc_url, username, password, description
+          FROM remote";
+
+  $rs = $db->GetAll($sql);
+
+  $ret = array();
+
+  foreach($rs as $r) {
+    if (limerpc_init($r['rpc_url'],$r['username'],$r['password']) === true) {
+      $l = $limeRPC->list_surveys($limeKey);
+      if (isset($l['status'])) {
+        //none available
+      } else if (is_array($l)) {
+        foreach ($l as $s) {
+          if ($s["active"] == "Y") {
+            $ret[] = array("sid" => $s['sid'],
+                        "description" => $s['surveyls_title'],
+                        "host" => $r['description'],
+                        "remote_id" => $r['id']);
+          }
+        }
+      }
+      limerpc_close();
+    }
+  }
+
+  return $ret;
+}
+
+
 
 /**
  * Strip comments from email taken from limesurvey common functions
@@ -50,7 +392,6 @@ include_once(dirname(__FILE__).'/../db.inc.php');
  * @param mixed    $email   
  * @param resource $replace Optional, defaults to ''. 
  * 
- * @return TODO
  * @author Adam Zammit <adam.zammit@acspri.org.au>
  * @since  2013-02-26
  */
@@ -274,114 +615,24 @@ function validate_email($email){
     return TRUE;
 }
 
-/**
- * Return the number of completions for a given
- * questionnaire, where the given sample var has
- * the given sample value
- *
- * @param int $lime_sid The limesurvey survey id 
- * @param int $questionnaire_id The questionnaire ID
- * @param int $sample_import_id The sample import ID
- * @param string $val The value to compare
- * --- changed @param string $var the variable to compare
- * to          @param string $var_id  - ID for  variable to compare
- * @return bool|int False if failed, otherwise the number of completions
- */
-function limesurvey_quota_replicate_completions($lime_sid,$questionnaire_id,$sample_import_id,$val,$var_id)
+function lime_compare($val1,$operator,$val2)
 {
-	global $db;
-
-  $sql = "SELECT COUNT(*)
-          FROM information_schema.tables
-          WHERE table_schema = '".DB_NAME."'
-          AND table_name = '" . LIME_PREFIX . "survey_$lime_sid'";
-
-  $rs = $db->GetOne($sql);
-
-  if ($rs != 1)
-    return false;
-
-	$sql = "SELECT count(*) as c
-		FROM " . LIME_PREFIX . "survey_$lime_sid as s
-		JOIN `case` as c ON (c.questionnaire_id = '$questionnaire_id')
-		JOIN `sample` as sam ON (c.sample_id = sam.sample_id AND sam.import_id = '$sample_import_id')
-		JOIN `sample_var` as sv ON (sv.sample_id = sam.sample_id AND sv.var_id = '$var_id' AND sv.val LIKE '$val')
-		WHERE s.submitdate IS NOT NULL
-		AND s.token = c.token";
-
-	$rs = $db->GetRow($sql);
-
-	if (isset($rs) && !empty($rs))
-		return $rs['c'];
-	
-	return false;
+  $val1 = trim($val1);
+  $val2 = trim($val2);
+  if ($operator == "<")
+    return ($val1 < $val2);
+  else if ($operator == ">")
+    return ($val1 > $val2);
+  else if ($operator == "<=")
+    return ($val1 <= $val2);
+  else if ($operator == ">=")
+    return ($val1 >= $val2);
+  else if ($operator == "NOT LIKE" || $operator == "!=")
+    return ($val1 != $val2);
+  else 
+    return ($val1 == $val2);
 }
 
-/**
- * Return whether the given case matches the requested quota
- *
- * @param string $lime_sgqa The limesurvey SGQA
- * @param int $lime_sid The limesurvey survey id 
- * @param int $case_id The case id
- * @param string $value The value to compare
- * @param string $comparison The type of comparison
- * @param int $sample_import_id The sample import ID
- *
- * @return bool|int False if failed, otherwise 1 if matched, 0 if doesn't
- * 
- */
-function limesurvey_quota_match($lime_sgqa,$lime_sid,$case_id,$value,$comparison,$sample_import_id)
-{
-	global $db;
-
-	$sql = "SELECT count(*) as c
-		FROM " . LIME_PREFIX . "survey_$lime_sid as s
-		JOIN `case` as c ON (c.case_id = '$case_id')
-		JOIN `sample` as sam ON (c.sample_id = sam.sample_id and sam.import_id = $sample_import_id)
-		WHERE s.token = c.token
-		AND s.`$lime_sgqa` $comparison '$value'";
-
-	$rs = $db->GetRow($sql);
-
-	if (isset($rs) && !empty($rs))
-		return $rs['c'];
-	
-	return false;
-}
-
-/**
- * Return whether the given case matches the replicate sample only quota
- * 
- * @param int $lime_sid The Limesurvey survey id
- * @param int $case_id The case id
- * @param string $val The sample value to compare
- * --- changed @param string $var the variable to compare
- * to          @param string $var_id  - ID for  variable to compare
- * @param int $sample_import_id The sample import id we are looking at
- * 
- * @return bool|int False if failed, otherwise 1 if matched, 0 if doesn't
- * @author Adam Zammit <adam.zammit@acspri.org.au>
- * @since  2012-04-30
- */
-function limesurvey_quota_replicate_match($lime_sid,$case_id,$val,$var_id,$sample_import_id)
-{
-	global $db;
-	
-	$sql = "SELECT count(*) as c
-		FROM " . LIME_PREFIX . "survey_$lime_sid as s
-		JOIN `case` as c ON (c.case_id = '$case_id')
-		JOIN `sample` as sam ON (c.sample_id = sam.sample_id and sam.import_id = $sample_import_id)
-		JOIN `sample_var` as sv ON (sv.sample_id = sam.sample_id AND sv.var_id = '$var_id' AND sv.val LIKE '$val')
-		WHERE s.token = c.token";
-
-	$rs = $db->GetRow($sql);
-
-	if (isset($rs) && !empty($rs))
-		return $rs['c'];
-	
-	return false;
-
-}
 
 /**
  * Return the number of completions for a given
@@ -401,127 +652,34 @@ function limesurvey_quota_completions($lime_sgqa,$lime_sid,$questionnaire_id,$sa
 {
 	global $db;
 
-  $sql = "SELECT COUNT(*)
-          FROM information_schema.tables
-          WHERE table_schema = '".DB_NAME."'
-          AND table_name = '" . LIME_PREFIX . "survey_$lime_sid'";
+  $resp = lime_get_responses_by_questionnaire($questionnaire_id);
 
-  $rs = $db->GetOne($sql);
+  $completions = false;
 
-  if ($rs != 1)
-    return false;
+  if ($resp !== false) {
+    $sql = "SELECT c.token,c.token as tok
+          FROM `case` as c
+          JOIN `sample` as sam ON (c.sample_id = sam.sample_id AND sam.import_id = '$sample_import_id')
+          WHERE c.questionnaire_id = '$questionnaire_id'";
+  
+    $rs = $db->GetAssoc($sql);
 
-	$sql = "SELECT count(*) as c
-		FROM " . LIME_PREFIX . "survey_$lime_sid as s
-		JOIN `case` as c ON (c.questionnaire_id = '$questionnaire_id')
-		JOIN `sample` as sam ON (c.sample_id = sam.sample_id AND sam.import_id = '$sample_import_id')
-		WHERE s.submitdate IS NOT NULL
-		AND s.token = c.token
-		AND s.`$lime_sgqa` $comparison '$value'";
-
-	$rs = $db->GetRow($sql);
-
-
-	if (isset($rs) && !empty($rs))
-		return $rs['c'];
+    $completions = 0;
+    foreach($resp as $r) {
+      foreach($r as $r1) {
+        foreach($r1 as $rl) {
+        if (isset($rl->token) && isset($rs[$rl->token])) {
+          //match to a case in the sample
+          if (isset($rl->$lime_sgqa)) {
+            $completions += lime_compare($rl->$lime_sgqa, $comparison, $value);
+          }
+        }
+        }
+      }
+    }
+  }
 	
-	return false;
-}
-
-/**
- * Get information on limesurvey quota's
- * Based on GetQuotaInformation() from common.php in Limesurvey
- *
- * @param int $lime_quota_id The quota id to get information on
- * @return array An array containing the question information for comparison
- */
-function get_limesurvey_quota_info($lime_quota_id)
-{
-	global $db;
-
-	$ret = array();
-
-	$sql = "SELECT q.qid
-		FROM ".LIME_PREFIX."quota_members as q, ".LIME_PREFIX."surveys as s
-    WHERE q.quota_id='$lime_quota_id'
-    AND s.sid = q.sid
-	GROUP BY q.qid";
-	
-	$rsq = $db->GetAll($sql);
-
-	foreach ($rsq as $q)
-	{
-		$qid = $q['qid'];
-
-		$sql = "SELECT q.*,s.language
-			FROM ".LIME_PREFIX."quota_members as q, ".LIME_PREFIX."surveys as s
-			WHERE q.quota_id='$lime_quota_id'
-			AND s.sid = q.sid
-			AND q.qid = $qid";
-	
-		$rs = $db->GetAll($sql);
-
-		$r2 = array();
-
-		foreach($rs as $quota_entry)
-		{
-			$lime_qid = $quota_entry['qid'];
-			$surveyid = $quota_entry['sid'];
-			$language = $quota_entry['language'];
-
-			$sql = "SELECT type, title,gid
-				FROM ".LIME_PREFIX."questions
-				WHERE qid='$lime_qid' 
-				AND language='$language'";
-
-			$qtype = $db->GetRow($sql);
-		
-			$fieldnames = "0";
-			
-			if ($qtype['type'] == "I" || $qtype['type'] == "G" || $qtype['type'] == "Y")
-			{
-				$fieldnames= ($surveyid.'X'.$qtype['gid'].'X'.$quota_entry['qid']);
-				$value = $quota_entry['code'];
-			}
-			
-			if($qtype['type'] == "L" || $qtype['type'] == "O" || $qtype['type'] =="!") 
-			{
-			    $fieldnames=( $surveyid.'X'.$qtype['gid'].'X'.$quota_entry['qid']);
-			    $value = $quota_entry['code'];
-			}
-
-			if($qtype['type'] == "M")
-			{
-				$fieldnames=( $surveyid.'X'.$qtype['gid'].'X'.$quota_entry['qid'].$quota_entry['code']);
-				$value = "Y";
-			}
-			
-			if($qtype['type'] == "A" || $qtype['type'] == "B")
-			{
-				$temp = explode('-',$quota_entry['code']);
-				$fieldnames=( $surveyid.'X'.$qtype['gid'].'X'.$quota_entry['qid'].$temp[0]);
-				$value = $temp[1];
-			}
-			
-
-			$r2[] = array('code' => $quota_entry['code'], 'value' => $value, 'qid' => $quota_entry['qid'], 'fieldname' => $fieldnames);
-		}
-	
-		$ret[$qid] = $r2;
-	}
-	return $ret;
-}
-
-/** 
- * Taken from common.php in the LimeSurvey package
- * Add a prefix to a database name
- *
- * @param string $name Database name
- * @link http://www.limesurvey.org/ LimeSurvey
- */
-function db_table_name($name)
-{
-	return "`".LIME_PREFIX.$name."`";
+	return $completions;
 }
 
 
@@ -544,71 +702,6 @@ function getRandomID()
 }
 
 
-
-/** 
- * Taken from admin/database.php in the LimeSurvey package
- * With modifications
- *
- * @param string $title Questionnaire name
- * @param bool $exittoend Whether to exit to the project end, or to the start of the questionnaire
- * @link http://www.limesurvey.org/ LimeSurvey
- */
-function create_limesurvey_questionnaire($title,$exittoend = true)
-{
-	global $db;
-
-	// Get random ids until one is found that is not used
-	do
-	{
-		$surveyid = getRandomID();
-		$isquery = "SELECT sid FROM ".db_table_name('surveys')." WHERE sid=$surveyid";
-		$isresult = $db->Execute($isquery);
-	}
-	while (!empty($isresult) && $isresult->RecordCount() > 0);
-
-	$isquery = "INSERT INTO ". LIME_PREFIX ."surveys\n"
-	. "(sid, owner_id, admin, active, expires, "
-	. "adminemail, private, faxto, format, template, "
-	. "language, datestamp, ipaddr, refurl, usecookie, notification, allowregister, "
-	. "allowsave, autoredirect, allowprev,datecreated,tokenanswerspersistence)\n"
-	. "VALUES ($surveyid, 1,\n"
-	. "'', 'N', \n"
-	. "NULL, '', 'N',\n"
-	. "'', 'S', 'quexs',\n"
-	. "'" . DEFAULT_LOCALE . "', 'Y', 'N', 'N',\n"
-	. "'N', '0', 'Y',\n"
-	. "'Y', 'Y', 'Y','".date("Y-m-d")."','Y')";
-	$isresult = $db->Execute($isquery) or die ($isquery."<br/>".$db->ErrorMsg());
-
-	// insert base language into surveys_language_settings
-	$isquery = "INSERT INTO ".db_table_name('surveys_languagesettings')
-	. "(surveyls_survey_id, surveyls_language, surveyls_title, surveyls_description, surveyls_welcometext, surveyls_urldescription, "
-	. "surveyls_email_invite_subj, surveyls_email_invite, surveyls_email_remind_subj, surveyls_email_remind, "
-	. "surveyls_email_register_subj, surveyls_email_register, surveyls_email_confirm_subj, surveyls_email_confirm,surveyls_url)\n"
-	. "VALUES ($surveyid, '" . DEFAULT_LOCALE . "', $title, $title,\n"
-	. "'',\n"
-	. "'', '',\n"
-	. "'', '',\n"
-	. "'', '',\n"
-	. "'', '',\n"
-	. "'', '";
-
-	if ($exittoend)
-		$isquery .=  "{ENDINTERVIEWURL}')";
-	else
-		$isquery .=  "{STARTINTERVIEWURL}')";
-	
-	$isresult = $db->Execute($isquery) or die ($isquery."<br/>".$db->ErrorMsg());
-
-
-	// Insert into survey_rights
-	$isrquery = "INSERT INTO ". LIME_PREFIX . "surveys_rights VALUES($surveyid,1,1,1,1,1,1,1)";
-	$isrresult = $db->Execute($isrquery) or die ($isrquery."<br />".$db->ErrorMsg());
-
-	return $surveyid;
-}
-
-
 /**
  * Return the limesurvey id given the case_id
  *
@@ -619,54 +712,34 @@ function create_limesurvey_questionnaire($title,$exittoend = true)
 function get_lime_id($case_id)
 {
 	global $db;
+    global $limeRPC;
+    global $limeKey;
 
-	$lime_sid = get_lime_sid($case_id);
-	if ($lime_sid == false) return false;
-
-	$sql = "SELECT s.id
-		FROM " . LIME_PREFIX . "survey_$lime_sid as s, `case` as c
-		WHERE c.case_id = '$case_id'
-		AND c.token = s.token";
+	$sql = "SELECT c.token,c.questionnaire_id
+		FROM `case` as c
+		WHERE c.case_id = '$case_id'";
 	
-	$r = $db->GetRow($sql);
+	$rs = $db->GetRow($sql);
 
-	if (!empty($r) && isset($r['id']))
-		return $r['id'];
+    $token = $rs['token'];
+    $qid = $rs['questionnaire_id'];
 
-	return false;
+    $lime_id = limerpc_init_qid($qid);
 
+    $ret = false;
 
+    if ($lime_id !== false) {
+      $q = $limeRPC->get_response_ids($limeKey,$lime_id,$token);
+      if (!isset($q['status'])) {
+        $ret = current($q); //return first id;
+      }
+    } 
+
+    limerpc_close();
+
+	return $ret;
 }
 
-
-/**
- * Return the limesurvey tid given the case_id
- *
- * @param int $case_id The case id
- * @return bool|int False if no lime_tid otherwise the lime_tid
- *
- */
-function get_lime_tid($case_id)
-{
-	global $db;
-
-	$lime_sid = get_lime_sid($case_id);
-	if ($lime_sid == false) return false;
-
-	$sql = "SELECT t.tid
-		FROM " . LIME_PREFIX . "tokens_$lime_sid as t, `case` as c
-		WHERE c.case_id = '$case_id'
-		AND c.token = t.token";
-	
-	$r = $db->GetRow($sql);
-
-	if (!empty($r) && isset($r['tid']))
-		return $r['tid'];
-
-	return false;
-
-
-}
 
 /**
  * Return the lime_sid given the case_id
@@ -702,18 +775,15 @@ function limesurvey_is_quota_full($case_id)
 {
 	global $db;
 
-	$lime_sid = get_lime_sid($case_id);
-	if ($lime_sid == false) return false;
+    $sql = "SELECT questionnaire_id, token
+            FROM `case`
+            WHERE case_id = '$case_id'";
 
-	$sql = "SELECT t.completed
-		FROM " . LIME_PREFIX . "tokens_$lime_sid as t, `case` as c
-		WHERE c.case_id = '$case_id'
-		AND c.token = t.token";
-	
-	$r = $db->GetRow($sql);
+    $rs = $db->GetRow($sql);
 
-	if (!empty($r))
-		if ($r['completed'] == 'Q') return true;
+    $r = get_token_value($rs['questionnaire_id'],$rs['token'], 'completed');
+
+	if ($r == 'Q') return true;
 
 	return false;
 }
@@ -730,42 +800,16 @@ function limesurvey_is_completed($case_id)
 {
 	global $db;
 
-	$lime_sid = get_lime_sid($case_id);
-	if ($lime_sid == false) return false;
+    $sql = "SELECT questionnaire_id, token
+            FROM `case`
+            WHERE case_id = '$case_id'";
 
-	$sql = "SELECT t.completed
-		FROM " . LIME_PREFIX . "tokens_$lime_sid as t, `case` as c
-		WHERE c.case_id = '$case_id'
-		AND t.token = c.token";
-	
-	$r = $db->GetRow($sql);
+    $rs = $db->GetRow($sql);
 
-	if (!empty($r))
-		if ($r['completed'] != 'N' && $r['completed'] != 'Q') return true;
+    $r = get_token_value($rs['questionnaire_id'],$rs['token'], 'completed');
 
-	return false;
-}
-
-
-/**
- * Return the number of questions in the given questionnaire
- *
- * @param int $lime_sid The limesurvey sid
- * @return bool|int False if no data, otherwise the number of questions
- *
- */
-function limesurvey_get_numberofquestions($lime_sid)
-{
-	global $db;
-
-	$sql = "SELECT count(qid) as c
-		FROM " . LIME_PREFIX . "questions
-		WHERE sid = '$lime_sid'";
-
-	$r = $db->GetRow($sql);
-
-	if (!empty($r))
-		return $r['c'];
+    //hasn't failed, not quota filled or not marked as incomplete
+	if ($r !== false && $r != 'Q' && $r != 'N') return true;
 
 	return false;
 }
@@ -781,39 +825,13 @@ function limesurvey_percent_complete($case_id)
 {
 	global $db;
 
-	$lime_sid = get_lime_sid($case_id);
-	if ($lime_sid == false) return false;
 
-	$sql = "SELECT saved_thisstep
-		FROM ". LIME_PREFIX ."saved_control
-		WHERE sid = '$lime_sid'
-		AND identifier = '$case_id'";
-
-	$r = $db->GetRow($sql);
-
-	if (!empty($r))
-	{
-		$step = $r['saved_thisstep'];
-		$questions = limesurvey_get_numberofquestions($lime_sid);
-		return ($step / $questions) * 100.0;
-	}
-
+    //TODO: use export_responses_by_token and check the lastpage variable?
+    //
+    
 	return false;
 
 }
 
-
-function limesurvey_get_width($qid,$default)
-{
-	global $db;
-
-	$sql = "SELECT value FROM ".LIME_PREFIX."question_attributes WHERE qid = '$qid' and attribute = 'maximum_chars'";
-	$r = $db->GetRow($sql);
-
-	if (!empty($r))
-		$default = $r['value'];
-
-	return $default;
-}
 
 ?>

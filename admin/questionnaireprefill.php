@@ -149,22 +149,19 @@ if ($questionnaire_id != false)
 	$sgqa = false;
 	if (isset($_GET['sgqa'])) 	$sgqa = $_GET['sgqa'];
 
-	$sql = "SELECT CONCAT( q.sid, 'X', q.gid, 'X', q.qid) AS value,
-		CONCAT( q.sid, 'X', q.gid, 'X', q.qid, '&ensp;->&ensp;' , CASE WHEN qo.question IS NULL THEN q.question ELSE CONCAT(qo.question,' : ',q.question) END) as description,
-		CASE WHEN CONCAT(q.sid, 'X', q.gid, 'X', q.qid) = '$sgqa' THEN 'selected=\'selected\'' ELSE '' END AS selected
-		FROM `" . LIME_PREFIX . "questions` AS q
-		LEFT JOIN `" . LIME_PREFIX . "questions` as qo ON (qo.qid = q.parent_qid)
-		WHERE q.sid = '$lime_sid'
-		ORDER BY CASE WHEN qo.question_order IS NULL THEN q.question_order ELSE qo.question_order + (q.question_order / 1000) END ASC";
+    /**
+     * Display functions
+     */
+    include_once("../functions/functions.limesurvey.php");
 
-	$rs = $db->GetAll($sql);
+    $rs = lime_list_questions($questionnaire_id);
 
 	for ($i=0; $i<count($rs); $i++)
 	{
-		$rs[$i]['description'] = substr(strip_tags($rs[$i]['description']),0,400);
+    $rs[$i]['description'] = substr(strip_tags($rs[$i]['question']),0,400);
+    $rs[$i]['value'] = $rs[$i]['title'];
 	}
-
-	display_chooser($rs,"sgqa","sgqa",true,"questionnaire_id=$questionnaire_id",true,true,false,true,"pull-left");
+	display_chooser($rs,"sgqa","sgqa",true,"questionnaire_id=$questionnaire_id",true,true,array('title', $sgqa),true,"pull-left");
 	print "<div class='clearfix'></div>";
 	
 	if ($sgqa != false)

@@ -89,13 +89,9 @@ if (isset($_POST['ed']))
 	
 	unset($_POST['ed']);
 	unset($_POST['sample_import_id']);
-	
-//	print_r($_POST). "</br>"; //посмотрим чего отравляется
 
 	if (isset($_POST['del']) && isset($_POST['type']) ) { 
 		$a = array(); $b = array(); $cert = array(); $a = $_POST['type']; 
-		
-		//echo "<p> type before unset->>"; foreach($_POST['type'] as $key => $val) { echo ' | ', $key,' => ',$val,' | '; }; print "</p>";
 
 		foreach($_POST['del'] as $p) {
 			unset ($_POST['type'][$p]);
@@ -110,7 +106,6 @@ if (isset($_POST['ed']))
 			} 
 			/* else { echo "<div class='alert alert-info'>", T_("You can delete string '$key'. "), "</div>";  } */
 		}
-		//echo "<p>del ->>"; foreach($_POST['del'] as $key => $val) { echo ' | ', $key,' => ',$val,' | '; }; print "</p>"; 
 	}	
 
 	if (isset($_POST['type'])){ 
@@ -136,7 +131,7 @@ if (isset($_POST['ed']))
 		if ($eml < 2) {$ch4 = true;} 
 			else { echo "<div class='alert alert-warning'>", T_("Too many e-mail fields. Please check selected types for E-mail."), "</div>"; }
 			
-		if ($ch1 && $ch2 && $ch3 && $ch4)  */$typecheck = true; //echo $ch1,$ch2,$ch3,$ch4, "typecheck=",$typecheck, "</br>" ; 
+		if ($ch1 && $ch2 && $ch3 && $ch4)  */$typecheck = true; 
 		
 		if ($typecheck){
 			
@@ -178,11 +173,10 @@ if (isset($_POST['ed']))
 	if (isset($_POST['var'])){ 
 
 		foreach($_POST['var'] as $p => $val)
-		{//		 echo  '| ',$p,' => ',$val,'+ ';
-			$v = str_replace(" ", "_", $val);
-
+		{
+			$val = str_replace(array(" ,",", ",",","  "," "),"_", $val);
 			$sql = "UPDATE sample_import_var_restrict
-				SET `var` = '$v'
+				SET `var` = '$val'
 				WHERE sample_import_id = $sample_import_id
 				AND `var_id` = $p";
 			$db->Execute($sql);
@@ -199,7 +193,7 @@ if (isset($_POST['ed']))
 		$db->Execute($sql);
 
 		foreach($_POST['see'] as $p => $val)
-		{//		 echo $p,' => ',$val,' + ';
+		{
 			$sql = "UPDATE sample_import_var_restrict
 				SET `restrict` = 0
 				WHERE sample_import_id = $sample_import_id
@@ -235,8 +229,10 @@ if (isset($_GET['delete_sample'])){
 		$db->StartTrans();
 	 
 		//del from questionnaire_sample_exclude_priority
-		$sql = "DELETE FROM `questionnaire_sample_exclude_priority` WHERE sample_id IN ($samimdel_s)";
-		$db->Execute($sql);
+		if (!empty($samimdel_s)) {
+			$sql = "DELETE FROM `questionnaire_sample_exclude_priority` WHERE sample_id IN ($samimdel_s)";
+			$db->Execute($sql);
+		}
 		
 		//del from questionnaire_sample_quota
 		$sql = "DELETE FROM `questionnaire_sample_quota` WHERE sample_import_id  = $sample_import_id";
@@ -247,16 +243,20 @@ if (isset($_GET['delete_sample'])){
 		$db->Execute($sql);	 
 	 
 		//del from questionnaire_sample_quota_row_exclude
-		$sql = "DELETE FROM `questionnaire_sample_quota_row_exclude` WHERE sample_id IN ($samimdel_s)";
-		$db->Execute($sql);	
+		if (!empty($samimdel_s)) {
+			$sql = "DELETE FROM `questionnaire_sample_quota_row_exclude` WHERE sample_id IN ($samimdel_s)";
+			$db->Execute($sql);	
+		}
 	
 		//del from questionnaire_sample_timeslot 
 		$sql = "DELETE FROM `questionnaire_sample_timeslot` WHERE sample_import_id  = $sample_import_id";
 		$db->Execute($sql);
 		
 		//delete from sample_var
-		$sql = "DELETE FROM `sample_var` WHERE sample_id IN ($samimdel_s)";
-		$db->Execute($sql);
+		if (!empty($samimdel_s)) {
+			$sql = "DELETE FROM `sample_var` WHERE sample_id IN ($samimdel_s)";
+			$db->Execute($sql);
+		}
 		
 		//del from sample_import_var_restrict
 		$sql = "DELETE FROM `sample_import_var_restrict` WHERE sample_import_id  = $sample_import_id";
@@ -300,16 +300,16 @@ if (isset($_GET['edit']) )
 	$rd = $db->GetAll($sql);
 
 	$sql = "SELECT sir.var_id, 
-		CONCAT('<input type=\"text\" onInput=\"$(this).attr(\'name\',\'var[',sir.var_id,']\');\"  value=\"' ,sir.var, '\" required class=\"form-control\" style=\"min-width: 300px;\" $dis />') as var, 
-		CONCAT ('<select name=\"type[',sir.var_id,']\" class=\"form-control\" $dis >";
+		MIN(CONCAT('<input type=\"text\" name=\"var[',sir.var_id,']\"  value=\"' ,sir.var, '\" required class=\"form-control\" style=\"min-width: 300px;\" $dis />')) as var, 
+		MIN(CONCAT ('<select name=\"type[',sir.var_id,']\" class=\"form-control\" $dis >";
 			foreach($rd as $r)
 			{
 				$sql .= "<option value=\"{$r['type']}\"', CASE WHEN ( svt.type = {$r['type']}) THEN 'selected=\"selected\"' ELSE '' END , ' >" . T_($r['description']) . "</option>";
 			}
-	$sql .= "</select>') as type, sv.val,
-		CONCAT('<input type=\'checkbox\' ', CASE WHEN (sir.restrict IS NULL || sir.restrict = 0) THEN 'checked=\"checked\"' ELSE '' END   ,'  name=\"see[]\" value=\'',sir.var_id,'\' data-toggle=\"toggle\" data-size=\"small\" data-style=\"center-block\" data-on=" . TQ_("Yes") . " data-off=" . TQ_("No") . " data-width=\"70\"/>') as see,
-		CONCAT('<input type=\'checkbox\' name=\"del[',sir.var_id,']\" value=\'',sir.var_id,'\' $dis data-toggle=\"toggle\" data-size=\"small\" data-style=\"center-block\" data-on=" . TQ_("Yes") . " data-off=" . TQ_("No") . " data-width=\"70\" data-onstyle=\'danger \'/>') as del,
-		sir.restrict IS NULL as existss
+	$sql .= "</select>')) as type, MIN(sv.val),
+		MIN(CONCAT('<input type=\'checkbox\' ', CASE WHEN (sir.restrict IS NULL || sir.restrict = 0) THEN 'checked=\"checked\"' ELSE '' END   ,'  name=\"see[]\" value=\'',sir.var_id,'\' data-toggle=\"toggle\" data-size=\"small\" data-style=\"center-block\" data-on=" . TQ_("Yes") . " data-off=" . TQ_("No") . " data-width=\"70\"/>')) as see,
+		MIN(CONCAT('<input type=\'checkbox\' name=\"del[',sir.var_id,']\" value=\'',sir.var_id,'\' $dis data-toggle=\"toggle\" data-size=\"small\" data-style=\"center-block\" data-on=" . TQ_("Yes") . " data-off=" . TQ_("No") . " data-width=\"70\" data-onstyle=\'danger \'/>')) as del,
+		MIN(sir.restrict IS NULL) as existss
 		FROM sample_import as si, sample_var as sv, sample as s, sample_import_var_restrict as sir, sample_var_type as svt
 		WHERE si.sample_import_id = $sample_import_id
 		AND sir.sample_import_id = si.sample_import_id 
@@ -322,6 +322,7 @@ if (isset($_GET['edit']) )
 
 	print "<div class='col-sm-8'><h3>" . T_("Sample") . ":&emsp;" . $sd['description'] . "&emsp;<small>ID <b> $sample_import_id</b> </small></h3></div>";
 	print "<div class='col-sm-2'><a href='samplesearch.php?sample_import_id=$sample_import_id' class='btn btn-default' ><i class='fa fa-search fa-lg fa-fw text-primary'></i>&emsp;" . T_("Search this sample") . "</a></div>";
+	print "<div class='col-sm-2'><a href='updatesample.php?sample_import_id=$sample_import_id' class='btn btn-default' ><i class='fa fa-plus fa-lg fa-fw text-primary'></i>&emsp;" . T_("Add to this sample") . "</a></div>";
 	print "<div class='clearfix'></div>";
 
 	if($sd['enabled'] == 0){
@@ -356,7 +357,7 @@ if ($rs){
 
 <?php
 
-	print "<div class='well text-danger col-sm-3'><p>" . T_("Select which fields from this sample to deidentify. </p> Deidentified fields will be permanently deleted from the sample.") . "</p></div>";
+	if($sd['enabled'] == 0) print "<div class='well text-danger col-sm-3'><p>" . T_("Select which fields from this sample to deidentify. </p> Deidentified fields will be permanently deleted from the sample.") . "</p></div>";
 	}
 else 
 {
@@ -391,7 +392,6 @@ else
 	$rs = $db->GetAll($sql);
 	if (!empty($rs)) {
 		$count = count($rs);
-		//print_r($rs); 
 		print "<div class='well text-danger col-sm-3'><p>" . T_("Fix  this sample ") . "</p>";
 		print "<p>" . $count . " var id's not match</p>";
  
@@ -485,6 +485,7 @@ $sql = "SELECT
 		CONCAT('<a href=\'\' class=\'btn btn-default \' data-toggle=\'confirmation\' data-href=\'?delete_sample=',sample_import_id,'\' data-title=\'" . TQ_("ARE YOU SURE?") . "\' data-btnOkLabel=\'" . TQ_("Yes") . "\' data-btnCancelLabel=\'" . TQ_("Cancel") . "\' ><i class=\'fa fa-trash fa-lg fa-fw text-danger \' data-toggle=\'tooltip\' title=\'" . TQ_("DELETE SAMPLE") . "\'></i></a>')
 	END as delsample,
 	CONCAT('<a href=\'samplesearch.php?sample_import_id=',sample_import_id,'\' class=\'btn btn-default\' data-toggle=\'tooltip\' title=\'" . TQ_("Search the sample") . "',sample_import_id,'\'><i class=\'fa fa-search fa-lg fa-fw text-primary\'></i></a>')  as ssearch,
+	CONCAT('<a href=\'updatesample.php?sample_import_id=',sample_import_id,'\' class=\'btn btn-default\' data-toggle=\'tooltip\' title=\'" . TQ_("Add to the sample") . "',sample_import_id,'\'><i class=\'fa fa-plus fa-lg fa-fw text-primary\'></i></a>')  as sadd,
 	CONCAT('<a href=\'callhistory.php?sample_import_id=',sample_import_id,'\' class=\'btn btn-default\' data-toggle=\'tooltip\' title=\'" . TQ_("Call history"). "&ensp;\n" . TQ_("sample"). "&ensp;',sample_import_id,'\'><i class=\'fa fa-phone fa-lg text-primary\'></i></a>') as calls,
 	CONCAT('<h4>',description,'&emsp;</h4>') as description,
 	CONCAT('<h4 class=\'fa fa-lg text-primary pull-right\'>',(SELECT COUNT( DISTINCT`sample_var`.sample_id) FROM `sample_var`, `sample` WHERE `sample`.sample_id = `sample_var`.sample_id AND `sample`.import_id = sample_import_id ),'&emsp;</h4>') as cnt
@@ -498,7 +499,7 @@ echo "<div class='form-group'>
 		<a href='' onclick='history.back();return false;' class='btn btn-default'><i class='fa fa-chevron-left fa-lg text-primary'></i>&emsp;" . T_("Go back") . "</a>
 		<a href='import.php' class='btn btn-default col-sm-offset-4' ><i class='fa fa-upload fa-lg'></i>&emsp;" . T_("Import a sample file") . "</a>
 	</div>";
-$columns = array("id","description","cnt","status","enabledisable","calls","did","ssearch","delsample"); //"vp","rname",
+$columns = array("id","description","cnt","status","enabledisable","calls","did","ssearch","sadd","delsample"); //"vp","rname",
 //$titles = array(T_("ID"),T_("Sample"),T_("Records"), T_("Call History"),T_("Enable/Disable"), T_("Status"), T_("Deidentify"), T_("View"), T_("Rename"), T_("Search"), T_("Delete sample")); 
 xhtml_table($rs,$columns, false, "table-hover table-condensed ");
 

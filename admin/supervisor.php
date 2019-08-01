@@ -165,7 +165,7 @@ if (!empty($rs))
 				<div class="modal-header">
 					<button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
 					<h3 class="modal-title" id="calloutcome"><?php echo T_("Set an outcome for this call");?></h3>
-				</div><form method="get" action="?" class="form-inline ">
+				</div><form method="get" action="?case_id=<?php echo $case_id;?>" class="form-inline ">
 				<div class="modal-body">
 			<?php 	
 			if (isset($_GET['call_id'])){ $call_id = bigintval($_GET['call_id']); 
@@ -231,18 +231,18 @@ if (isset($_GET['call_id']))
 }
 if ($case_id != false)
 {
-	if (isset($_GET['note']))
+	if (isset($_POST['note']))
 	{
-		$note = $db->qstr($_GET['note']);
+		$note = $db->qstr($_POST['note']);
 		
 		$sql = "INSERT INTO `case_note` (case_note_id,case_id,operator_id,note,datetime)
 			VALUES (NULL,'$case_id','$operator_id',$note,CONVERT_TZ(NOW(),'System','UTC'))";
 		$db->Execute($sql);
 	}
 
-	if (isset($_GET['outcome_id']))
+	if (isset($_POST['outcome_id']))
 	{
-		$outcome_id = bigintval($_GET['outcome_id']);
+		$outcome_id = bigintval($_POST['outcome_id']);
 
 		if ($outcome_id > 0)
 		{
@@ -254,9 +254,9 @@ if ($case_id != false)
 		}
 	}
 
-	if (isset($_GET['operator_id']))
+	if (isset($_POST['operator_id']))
 	{
-		$case_operator_id = bigintval($_GET['operator_id']);
+		$case_operator_id = bigintval($_POST['operator_id']);
 
 		if ($case_operator_id == 0)
 		{
@@ -275,7 +275,7 @@ if ($case_id != false)
 		$db->Execute($sql);
 	}
 
-	if (isset($_GET['submitag']))
+	if (isset($_POST['submitag']))
 	{
 		$db->StartTrans();
 
@@ -284,7 +284,7 @@ if ($case_id != false)
 
 		$db->Execute($sql);
 
-		foreach($_GET as $key => $val)
+		foreach($_POST as $key => $val)
 		{
 			if (substr($key,0,2) == "ag")
 			{
@@ -319,19 +319,20 @@ if ($case_id != false)
 		// view sample details
 		print "<div class='panel-body'><h4 class=''><i class='fa fa-book'></i>&emsp;" . T_("Sample details")."</h4>";
 		
-		$sql = "SELECT sv.sample_id, c.case_id , s.Time_zone_name,
-			TIME_FORMAT(CONVERT_TZ(NOW(),@@session.time_zone,s.Time_zone_name),'". TIME_FORMAT ."') as time
+		$sql = "SELECT sv.sample_id, MIN(c.case_id) as case_id , MIN(s.Time_zone_name) as Time_zone_name,
+      MIN(TIME_FORMAT(CONVERT_TZ(NOW(),'System',s.Time_zone_name),'". TIME_FORMAT ."')) as time,
+      MIN(c.token) as token
 			FROM sample_var AS sv
 			LEFT JOIN (`case` AS c , sample as s) ON ( c.sample_id = sv.sample_id AND s.sample_id = c.sample_id ) WHERE c.case_id = '$case_id'
 			GROUP BY sv.sample_id";
 		$r = $db->GetAll($sql);
 		if ($r){
-		$fnames = array("sample_id", "Time_zone_name", "time");
-		$fdesc = array(T_("Sample id"),T_("Timezone"),T_("Time NOW"));
+		$fnames = array("sample_id", "token", "Time_zone_name", "time");
+		$fdesc = array(T_("Sample id"),T_("Token"),T_("Timezone"),T_("Time NOW"));
 		$varr= array();
 		$sql = "SELECT var,var_id
 				FROM sample_import_var_restrict
-				WHERE sample_import_id = $sid AND type IN (2,3,6,7)
+				WHERE sample_import_id = $sid 
 				ORDER by var DESC";
 		$rs = $db->GetAll($sql);
 
@@ -363,19 +364,21 @@ if ($case_id != false)
 		print "<div class='panel-body'><h4 class=''><i class='fa fa-clock-o'></i>&emsp;" . T_("Appointments")."</h4>";
 
 		$sql = "SELECT  
-		CONVERT_TZ(a.start,'UTC',@@session.time_zone) as start,
-		CONVERT_TZ(a.end,'UTC',@@session.time_zone) as end, 
-		CONCAT(r.firstName,' ', r.lastName) as resp,
-		IFNULL(ou.description,'" . T_("Not yet called") . "') as outcome, 
-		CONCAT (oo.firstName,' ', oo.lastName) as makerName, 
-		CONCAT (ooo.firstName,' ', ooo.lastName) as callerName,
-		CONCAT('<a href=\'supervisor.php?case_id=', c.case_id, '\'>', c.case_id, '</a>') as case_id,
-		CONCAT('&emsp;<a href=\'\' data-toggle=\'confirmation\' data-placement=\'left\' data-href=\'displayappointments.php?case_id=', c.case_id, '&amp;appointment_id=', a.appointment_id,'&amp;delete=delete\'><i class=\'fa fa-trash fa-lg text-danger\' data-toggle=\'tooltip\' title=\'" . TQ_("Delete") . "\'></i></a>&emsp;') as link,
-		CONCAT('&emsp;<a href=\'displayappointments.php?case_id=', c.case_id, '&amp;appointment_id=', a.appointment_id, '\' data-toggle=\'tooltip\' title=\'" . TQ_("Edit") . "\'><i class=\'fa fa-edit fa-lg\'></i></a>&emsp;') as edit
+		MIN(CONVERT_TZ(a.start,'UTC',co.Time_zone_name)) as start,
+		MIN(CONVERT_TZ(a.end,'UTC',co.Time_zone_name)) as end, 
+		MIN(CONCAT(r.firstName,' ', r.lastName)) as resp,
+		MIN(IFNULL(ou.description,'" . T_("Not yet called") . "')) as outcome, 
+		MIN(CONCAT (oo.firstName,' ', oo.lastName)) as makerName, 
+		MIN(CONCAT (ooo.firstName,' ', ooo.lastName)) as callerName,
+		MIN(CONCAT('<a href=\'supervisor.php?case_id=', c.case_id, '\'>', c.case_id, '</a>')) as case_id,
+		MIN(CONCAT('&emsp;<a href=\'\' data-toggle=\'confirmation\' data-title=\'" . TQ_("ARE YOU SURE?") . "\' data-btnOkLabel=\'" . TQ_("Yes") . "\' data-btnCancelLabel=\'" . TQ_("No") . "\' data-placement=\'left\' data-href=\'displayappointments.php?case_id=', c.case_id, '&amp;appointment_id=', a.appointment_id,'&amp;delete=delete\'><i class=\'fa fa-trash fa-lg text-danger\' data-toggle=\'tooltip\' title=\'" . TQ_("Delete") . "\'></i></a>&emsp;')) as link,
+		MIN(CONCAT('&emsp;<a href=\'displayappointments.php?case_id=', c.case_id, '&amp;appointment_id=', a.appointment_id, '\' data-toggle=\'tooltip\' title=\'" . TQ_("Edit") . "\'><i class=\'fa fa-edit fa-lg\'></i></a>&emsp;')) as edit
 		FROM appointment as a
-		JOIN (`case` as c, respondent as r, questionnaire as q, operator as oo, call_attempt as cc) on (a.case_id = c.case_id and a.respondent_id = r.respondent_id and q.questionnaire_id = c.questionnaire_id and a.call_attempt_id = cc.call_attempt_id and cc.operator_id =  oo.operator_id)
+		JOIN (`case` as c, respondent as r, questionnaire as q, operator as co) on (a.case_id = c.case_id and a.respondent_id = r.respondent_id and q.questionnaire_id = c.questionnaire_id)
+		LEFT JOIN (call_attempt as cc, operator as oo) on (a.call_attempt_id = cc.call_attempt_id and cc.operator_id = oo.operator_id)
 		LEFT JOIN (`call` as ca, outcome as ou, operator as ooo) ON (ca.call_id = a.completed_call_id and ou.outcome_id = ca.outcome_id and ca.operator_id = ooo.operator_id)
 		WHERE c.case_id = '$case_id'
+		AND co.operator_id = '$operator_id'
 		GROUP BY a.appointment_id
 		ORDER BY a.start ASC";
 	
@@ -416,7 +419,7 @@ if ($case_id != false)
 		print "</div>";
 
 		//view notes
-		$sql = "SELECT DATE_FORMAT(CONVERT_TZ(c.datetime,'UTC',op.Time_zone_name),'".DATE_TIME_FORMAT."') as time, CONCAT(op.firstName,' ',op.lastName) as firstName, c.note as note,  CONCAT('<a href=\'\' data-toggle=\'confirmation\' data-placement=\'left\' data-href=\'?case_id=$case_id&amp;case_note_id=', c.case_note_id, '\' class=\'btn  center-block\' ><i class=\'fa fa-trash fa-lg text-danger\' data-toggle=\'tooltip\' title=\'" . TQ_("Delete") . "\'></i></a>') as link 
+		$sql = "SELECT DATE_FORMAT(CONVERT_TZ(c.datetime,'UTC',op.Time_zone_name),'".DATE_TIME_FORMAT."') as time, CONCAT(op.firstName,' ',op.lastName) as firstName, c.note as note,  CONCAT('<a href=\'\' data-toggle=\'confirmation\' data-title=\'" . TQ_("ARE YOU SURE?") . "\' data-btnOkLabel=\'" . TQ_("Yes") . "\' data-btnCancelLabel=\'" . TQ_("No") . "\' data-placement=\'left\' data-href=\'?case_id=$case_id&amp;case_note_id=', c.case_note_id, '\' class=\'btn  center-block\' ><i class=\'fa fa-trash fa-lg text-danger\' data-toggle=\'tooltip\' title=\'" . TQ_("Delete") . "\'></i></a>') as link 
 			FROM `case_note` as c
 			JOIN (operator as op) on (c.operator_id = op.operator_id)
 			WHERE c.case_id = '$case_id'
@@ -433,8 +436,7 @@ if ($case_id != false)
 			}	
 		//add a note
 		?>
-		<form method="get" action="?" class="form-inline" >	
-		<input type="hidden" name="case_id" value="<?php  echo $case_id;?>"/>
+		<form method="post" action="?case_id=<?php echo $case_id;?>" class="form-inline" >	
 		<input type="text" class="textclass form-control" name="note" id="note" style="width: 70%;"/>&ensp;
 		<button class="submitclass btn btn-default" type="submit" name="submit"><i class="fa fa-file-text"></i>&emsp;<?php  echo T_("Add note"); ?></button> 
 		</form>
@@ -473,7 +475,7 @@ if ($case_id != false)
 		
 		print "<div class='panel-body'><h4><i class='fa fa-link'></i>&emsp;" . T_("Assign this case to operator (will appear as next case for them)") . "</h4>";
 		?>
-		<form method="get" action="?" class="form-inline">
+		<form method="post" action="?case_id=<?php echo $case_id;?>" class="form-inline">
 		<?php               
 			$sql = "SELECT operator_id as value,CONCAT(firstName,' ', lastName) as description, CASE WHEN next_case_id = '$case_id' THEN 'selected=\'selected\'' ELSE '' END AS selected
 				FROM operator
@@ -482,7 +484,6 @@ if ($case_id != false)
 			$rs3 = $db->GetAll($sql);
 			display_chooser($rs3, "operator_id", "operator_id",true,false,false,false);
 		?>
-		<input type="hidden" name="case_id" value="<?php echo $case_id;?>"/>
 		<button class="submitclass btn btn-default" type="submit" name="submit" ><i class="fa fa-link fa-lg"></i>&emsp;<?php echo T_("Assign this case to operator"); ?></button>
 		</form></div>
 		<?php 
@@ -490,10 +491,12 @@ if ($case_id != false)
 		
 		//Modify the case in Limesurvey
 		$sid = get_lime_sid($case_id);
-		$id = get_lime_id($case_id);
-		print "<div class='panel-body'>";
+    $id = get_lime_id($case_id);
+    $url = get_lime_url($case_id);
+
+   		print "<div class='panel-body'>";
 		if ($id)
-			print "<h4><a href='" . LIME_URL . "admin/admin.php?action=dataentry&amp;sid=$sid&amp;subaction=edit&amp;id=$id' class='btn btn-default btn-lime'><i class='fa fa-lemon-o fa-lg'></i>&emsp;" . T_("Modify responses for this case") . "</a></h4>";
+			print "<h4><a href='" . $url  . "/admin/dataentry/sa/editdata/subaction/edit/surveyid/$sid/id/$id' class='btn btn-default btn-lime'><i class='fa fa-lemon-o fa-lg'></i>&emsp;" . T_("Modify responses for this case") . "</a></h4>";
 		else
 			print "<div class='alert text-danger' role='alert'>" . T_("Case not yet started in Limesurvey") .  "</div>";
 		print "</div></div>";
@@ -514,7 +517,7 @@ if ($case_id != false)
 			$rs = $db->GetAll($sql);
 
 			//Display all availability groups as checkboxes
-			print "<form action='?' method='get' class='form-horizontal '>";
+			print "<form action='?case_id=<?php echo $case_id;?>' method='post' class='form-horizontal '>";
 			print "<h5 class=''>" . T_("Select groups to limit availability (Selecting none means always available)") .  "</h5><div class='col-sm-6'>";
 			foreach ($rs as $g)
 			{
@@ -527,7 +530,6 @@ if ($case_id != false)
 				print "&ensp;<input type='checkbox' name='ag{$g['availability_group_id']}' id='ag{$g['availability_group_id']}'	value='{$g['availability_group_id']}' $checked />&ensp; <label class='control-label' for='ag{$g['availability_group_id']}'>{$g['description']}</label></br>";
 			}
 		?>	</div>
-			<input type="hidden" name="case_id" value="<?php echo $case_id;?>"/>
 			<button class="submitclass btn btn-default pull-right" type="submit" name="submitag"><i class="fa fa-calendar fa-lg"></i>&emsp;<?php echo T_("Update case availability");?></button>
 			</form>
 		<?php 
@@ -541,7 +543,7 @@ if ($case_id != false)
 		//set an outcome
 		print "<div class='clearfix '></div><div class='panel-body col-sm-6 '><h4><i class='fa fa-dot-circle-o'></i>&emsp;" . T_("Set a case outcome") . "</h4>";
 		?>
-		<form method="get" action="?" class="form-inline">
+		<form method="post" action="?case_id=<?php echo $case_id;?>" class="form-inline">
 		<?php               
 			$sql = "SELECT outcome_id as value,description, CASE WHEN outcome_id = '$current_outcome_id' THEN 'selected=\'selected\'' ELSE '' END AS selected
 				FROM outcome";
@@ -550,7 +552,7 @@ if ($case_id != false)
 			translate_array($rs2,array("description"));
 			display_chooser($rs2, "outcome_id", "outcome_id",true,false,false,false);
 		?>
-		<input type="hidden" name="case_id" value="<?php  echo $case_id;?>" /><br/><br/>
+		<br/><br/>
 		<button class="submitclass btn btn-primary" type="submit" name="submit" ><i class="fa fa-dot-circle-o fa-lg"></i>&emsp;<?php  echo T_("Set outcome"); ?></button>
 		</form>
 		<?php 
@@ -560,8 +562,7 @@ if ($case_id != false)
 		print "<div class='panel-body col-sm-6 pull-right'><h4 class ='text-danger'><i class='fa fa-trash-o fa-lg'></i>&emsp;" . T_("Deidentify") . "</h4>";
 		print "<div class='well'>" . T_("Remove all sample details and contact numbers from this case") . "</div>";
 		?>
-		<form method="get" action="?">
-		<input type="hidden" name="case_id" value="<?php echo $case_id;?>"/>
+		<form method="post" action="?case_id=<?php echo $case_id;?>">
 		<button class=" btn btn-danger" name="deidentify" id="deidentify" data-toggle="confirmation" ><i class="fa fa-trash fa-lg"></i>&emsp;<?php echo T_("Deidentify");?></button>
 		</form></div>
 		<?php }

@@ -53,6 +53,46 @@ function only_numbers($str)
 	return preg_replace("/[^0-9]/", "",$str);
 }
 
+/**
+ * Verify that a provided file matches an existing sample file
+ */
+function verify_file($file,$import_id)
+{
+  $row = get_first_row($file);
+
+  global $db;
+
+  $sql = "SELECT var,type,var_id
+          FROM sample_import_var_restrict
+          WHERE sample_import_id = $import_id
+          ORDER BY var_id ASC";
+
+  $sivr = $db->GetAll($sql);
+
+  $count = 0;
+
+  $nrow = array();
+
+  foreach($row as $key => $val) {
+    $nrow[$key] = strtolower(str_replace(array(" ,",", ",",","  "," "),"_", $val));
+ 
+  }
+
+  foreach($sivr as $r) {
+    $var = strtolower($r['var']);
+    if ($var != $nrow[$count]) {
+      return false;
+    }
+
+    $count++;
+  }
+
+  //column headings match database
+  if ($count == count($row)) {
+    return true;
+  }
+}
+
 
 /**
  * Verify fields in a CSV file
@@ -95,6 +135,18 @@ function verify_fields($fields)
 		}
 	}
 
+  //check that only 0 or 1 token fields selected
+  $count = 0;
+  foreach($names as $val)
+  {
+    if ($val == 9) $count++;
+  }
+
+  if ($count > 1)
+  {
+    return T_("No more than one field may be a token field");
+  }
+
 	//check that there is one and one only primary phone selected
 	$count = 0;
 	foreach($names as $val)
@@ -136,7 +188,7 @@ function display_table($data)
 
 	foreach ($data as $key => $value)
 	{
-		$val = str_replace(" ", "_", $value);
+		$val = str_replace(array(" ,",", ",",","  "," "),"_", $value);
 		$checked = "checked";
 		if (empty($val)) $val = "samp_$row";
 
@@ -176,6 +228,38 @@ function get_first_row($file)
 	return $data;
 }
 
+/** 
+ * Add records to an existing sample
+ */
+function update_file($file,$import_id)
+{
+  global $db;
+
+	$db->StartTrans();
+
+	$selected_type = array();
+	$selected_name = array();
+	$sirv_id = array();
+
+  $sql = "SELECT var_id,var,type
+          FROM sample_import_var_restrict
+          WHERE sample_import_id = $import_id
+          ORDER BY var_id ASC";
+
+  $sivr = $db->GetAll($sql);
+
+  $count = 1;
+  foreach($sivr as $s) {
+    $selected_type[$count] = $s['type'];
+    $selected_name[$count] = $s['var'];
+    $sirv_id[$count] = $s['var_id'];
+    $count++;
+  }
+
+  add_to_sample($file,$import_id,$selected_type,$selected_name,$sirv_id,2);
+
+  return $db->CompleteTrans();
+}
 
 /**
  * Import a CSV file to the sample database
@@ -190,10 +274,6 @@ function get_first_row($file)
  */
 function import_file($file, $description, $fields, $firstrow = 2)
 {
-
-	$row = 1;
-	$handle = fopen($file, "r");
-
 	//import into database
 
 	global $db;
@@ -219,19 +299,14 @@ function import_file($file, $description, $fields, $firstrow = 2)
 		if (strncmp($key, "i_", 2) == 0)
 		{
 			$selected_type[substr($key,2)] = $fields["t_" . substr($key,2)];
-			$selected_name[substr($key,2)] = $fields["n_" . substr($key,2)];
-
-			$restrict = 1;
+			$selected_name[substr($key,2)] = str_replace(array(" ,",", ",",","  "," "),"_", $fields["n_" . substr($key,2)]);
 
 			//Set restrictions on columns
-			if (isset($fields["a_" . substr($key,2)]))
-			{
-				$restrict = 0;
-			}
+			if (isset($fields["a_" . substr($key,2)])) $restrict = 0; else $restrict = 1;
 			
 			$sql = "INSERT INTO sample_import_var_restrict
 				(`sample_import_id`,`var`,`type`,`restrict`)
-				VALUES ($id,'" . $fields["n_" . substr($key,2)] . "','" . $fields["t_" . substr($key,2)] . "',$restrict)";
+				VALUES ($id,'" . $selected_name[substr($key,2)] . "','" . $selected_type[substr($key,2)] . "',$restrict)";
 
 			$db->Execute($sql);
 		
@@ -239,12 +314,32 @@ function import_file($file, $description, $fields, $firstrow = 2)
 		}
 	}
 
+  add_to_sample($file,$id,$selected_type,$selected_name,$sirv_id,$firstrow);
+
+  return $db->CompleteTrans();	
+}
+
+/**
+ * add_to_sample
+ *
+ * Add records to the sample file
+ *
+ */
+function add_to_sample($file,$id,$selected_type,$selected_name,$sirv_id,$firstrow) 
+{
+  global $db;
+
+  $db->StartTrans();
+
 	/**
 	 * create an ordered index of columns that contain data for obtaining the timezone
 	 * type of 5,4,3,2 preferred
 	 */
 	
 	arsort($selected_type);
+
+	$row = 1;
+	$handle = fopen($file, "r");
 
 	$imported = 0;
 
@@ -313,8 +408,11 @@ function import_file($file, $description, $fields, $firstrow = 2)
 				 * insert into sample_var field
 				 */
 				foreach($selected_name as $key => $val)
-				{
-					$dkey = $db->Quote($data[$key - 1]);			
+        {
+          if (isset($data[$key -1 ]))
+  					$dkey = $db->Quote($data[$key - 1]);			
+          else
+            $dkey = $db->Quote("");
 		
 					$sql = "INSERT INTO sample_var (sample_id,var_id,val)
 						VALUES ('$sid','{$sirv_id[$key]}',{$dkey})";
@@ -336,8 +434,8 @@ function import_file($file, $description, $fields, $firstrow = 2)
 	unlink($file);
 
 	return $db->CompleteTrans();
-	
 }
+
 
 /**
  * Get the timezone given the sample value and type

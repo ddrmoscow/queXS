@@ -296,7 +296,7 @@ if (isset($_POST['update']) && isset($_GET['modify']))
 	$rs_project_end = $db->qstr(html_entity_decode($_POST['rs_project_end'],ENT_QUOTES,'UTF-8'));
 
 	$sql = "UPDATE questionnaire
-		SET description = $name, info = $info, rs_project_end = $rs_project_end, restrict_appointments_shifts = '$ras', restrict_work_shifts = '$rws', self_complete = $respsc, referral = $referral
+		SET description = $name, info = $info, rs_project_end = $rs_project_end, restrict_appointments_shifts = '$ras', restrict_work_shifts = '$rws', referral = $referral, self_complete = $respsc
 		WHERE questionnaire_id = '$questionnaire_id'";
 
 	$db->Execute($sql);
@@ -308,32 +308,19 @@ if (isset($_POST['update']) && isset($_GET['modify']))
 			WHERE questionnaire_id = '$questionnaire_id'";
 		$db->Execute($sql);
 	}
-
-	if ($respsc == 1)
-	{
-		$lime_mode = $db->qstr($_POST['lime_mode'],get_magic_quotes_gpc());
-		$lime_template = $db->qstr($_POST['lime_template'],get_magic_quotes_gpc());
-		$lime_endurl = $db->qstr($_POST['lime_endurl'],get_magic_quotes_gpc());
-
-		$sql = "UPDATE questionnaire
-			SET lime_mode = $lime_mode, lime_template = $lime_template, lime_endurl = $lime_endurl
-			WHERE questionnaire_id = $questionnaire_id";
-		$db->Execute($sql);
-	}
 }
 
 if (isset($_GET['modify']))
 {
 	$questionnaire_id = intval($_GET['modify']);
 
-	$sql = "SELECT `questionnaire`.*, sl.surveyls_title as title
-		FROM questionnaire
-		LEFT JOIN " . LIME_PREFIX . "surveys_languagesettings AS sl ON ( questionnaire.lime_sid = sl.surveyls_survey_id)
-		WHERE questionnaire_id = $questionnaire_id";
+	$sql = "SELECT `questionnaire`.*,remote.entry_url
+		FROM questionnaire, remote
+    WHERE questionnaire_id = $questionnaire_id
+    AND questionnaire.remote_id = remote.id";
 	$rs = $db->GetRow($sql);
 
 	$referral = $testing = $rws = $ras = $rsc = "checked=\"checked\"";
-	$rscd = "";	
 
 	$aio = $qbq = $gat = "";
 	if ($rs['lime_mode'] == "survey") $aio = "selected=\"selected\"";
@@ -347,7 +334,6 @@ if (isset($_GET['modify']))
 	if ($rs['self_complete'] == 0)
 	{
 		$rsc = "";
-		$rscd = "style='display:none;'";
 	}
 
 	xhtml_head(T_("Modify Questionnaire "),true,$css,$js_head, false, false, false, " &ensp;<span class=' text-uppercase'>" . "$rs[description]" . "</span>");
@@ -375,8 +361,8 @@ if (isset($_GET['modify']))
 			<a href='questionnairelist.php' class='btn btn-default pull-left' ><i class='fa fa-chevron-left fa-lg' style='color:blue;'></i>&emsp;<?php  echo T_("Go back"); ?></a><h3 class="pull-right"><?php echo T_("Assigned survey"); ?>:</h3>
 		</div>
 		<div class="col-sm-8">
-			<h3 class="pull-left" ><?php echo $rs['lime_sid'],"&emsp;",$rs['title']; ?></h3>
-			<?php echo "<a class='btn btn-default btn-lime pull-right' href='" . LIME_URL . "admin/admin.php?sid={$rs['lime_sid']}'><i class='fa fa-edit' style='color:blue;'></i>&emsp;" . T_("Edit instrument in Limesurvey") . "&emsp;</a>"; ?> 
+			<h3 class="pull-left" ><?php echo $rs['lime_sid'],"&emsp;"; ?></h3>
+			<?php echo "<a class='btn btn-default btn-lime pull-right' href='" . $rs['entry_url']. "admin/survey/sa/view/surveyid/{$rs['lime_sid']}'><i class='fa fa-edit' style='color:blue;'></i>&emsp;" . T_("Edit instrument in Limesurvey") . "&emsp;</a>"; ?> 
 		</div>
 	</div>
 
@@ -402,53 +388,7 @@ if (isset($_GET['modify']))
 	</div>
 	<div class="form-group">
 		<label class="col-sm-4 control-label" ><?php  echo T_("Allow for respondent self completion via email invitation?"); ?> </label>
-		<div class="col-sm-4" style="height: 30px;"><input name="respsc" id="respsc" type="checkbox" <?php echo $rsc ?> onchange="if(this.checked==true) {show(this,'limesc'); $('#url').attr('required','required');} else{ hide(this,'limesc'); $('#url').removeAttr('required');}" data-toggle="toggle" data-on="<?php echo T_("Yes"); ?>" data-off="<?php echo T_("No"); ?>" data-width="80"/></div>
-	</div>
-<div id="limesc" <?php echo $rscd; ?> >
-<div class="form-group">
-	<label class="col-sm-4 control-label" ><?php echo T_("Questionnaire display mode for respondent");?>: </label>
-	<div class="col-sm-4">
-		<select class="form-control"  name="lime_mode">
-			<option <?php echo $aio;?> value="survey"><?php echo T_("All in one"); ?></option>
-			<option <?php echo $qbq;?> value="question"><?php echo T_("Question by question"); ?></option>
-			<option <?php echo $gat;?> value="group"><?php echo T_("Group at a time"); ?></option>
-		</select>
-	</div>
-</div>
-<div class="form-group">
-	<label class="col-sm-4 control-label" ><?php echo T_("Limesurvey template for respondent");?>: </label>
-	<div class="col-sm-4">
-		<select class="form-control"  name="lime_template">
-<?php 
-	if ($handle = opendir(dirname(__FILE__)."/../include/limesurvey/templates")) {
-	    while (false !== ($entry = readdir($handle))) {
-	        if ($entry != "." && $entry != ".." && is_dir(dirname(__FILE__)."/../include/limesurvey/templates/" . $entry)){
-	            echo "<option value=\"$entry\" ";
-		    if ($rs['lime_template'] == $entry) echo " selected=\"selected\" ";
-		    echo ">$entry</option>";
-	        }
-	    }
-	    closedir($handle);
-	}
-	if ($handle = opendir(dirname(__FILE__)."/../include/limesurvey/upload/templates")) {
-	    while (false !== ($entry = readdir($handle))) {
-	        if ($entry != "." && $entry != ".." && is_dir(dirname(__FILE__)."/../include/limesurvey/upload/templates/" . $entry)){
-	            echo "<option value=\"$entry\" ";
-		    if ($rs['lime_template'] == $entry) echo " selected=\"selected\" ";
-		    echo ">$entry</option>";
-	        }
-	    }
-	    closedir($handle);
-	}		
-?>
-		</select>
-	</div>
-</div>
-	<div class="form-group">
-		<label class="col-sm-4 control-label text-danger" ><?php echo T_("URL to forward respondents on self completion (required)");?>: </label>
-		<div class="col-sm-4">
-			<input class="form-control" name="lime_endurl" id="url" type="url" value="<?php echo $rs['lime_endurl']; ?>"/>
-		</div>
+		<div class="col-sm-4" style="height: 30px;"><input name="respsc" id="respsc" type="checkbox" <?php echo $rsc ?> data-toggle="toggle" data-on="<?php echo T_("Yes"); ?>" data-off="<?php echo T_("No"); ?>" data-width="80"/></div>
 	</div>
 </div>
 <?php 
@@ -495,9 +435,7 @@ if ($rs['respondent_selection'] == 1 && empty($rs['lime_rs_sid'])) { ?>
 	</div>
 	
 	<?php	
-	}
-else if (!empty($rs['lime_rs_sid'])) { 
-	echo "<div class='well text-center'><a href='" . LIME_URL . "admin/admin.php?sid={$rs['lime_rs_sid']}'>" . T_("Edit respondent selection instrument in Limesurvey") . "</a></div>"; } 	
+	} 	
 ?>	
 
 	<div class="panel  panel-default">
@@ -557,7 +495,7 @@ else
 
 	$sql = "SELECT 
 		CONCAT('&ensp;<b class=\'badge\'>',questionnaire_id,'</b>&ensp;') as qid,
-		CONCAT('<h4>',description,'</h4>') as description,
+		CONCAT('<h4>',q.description,'</h4>') as description,
 		CASE WHEN enabled = 0 THEN
 			CONCAT('&ensp;<span class=\'btn label label-default\'>" . TQ_("Disabled") . "</span>&ensp;')
 		ELSE
@@ -566,10 +504,10 @@ else
 		CASE WHEN enabled = 0 THEN
 			CONCAT('&ensp;<a href=\'?enable=',questionnaire_id,'\'><i data-toggle=\'tooltip\' title=\'" . TQ_("Enable") . "\' class=\'fa fa-toggle-off fa-3x\' style=\'color:grey;\'></i></a>&ensp;')
 		ELSE
-			CONCAT('&ensp;<a href=\'\' data-toggle=\'confirmation\' data-href=\'?disable=',questionnaire_id,'\'><i data-toggle=\'tooltip\' title=\'" . TQ_("Disable") . "\' class=\'fa fa-toggle-on fa-3x\'></i></a>&ensp;')
+			CONCAT('&ensp;<a href=\'\' data-toggle=\'confirmation\' data-title=\'" . TQ_("ARE YOU SURE?") . "\' data-btnOkLabel=\'" . TQ_("Yes") . "\' data-btnCancelLabel=\'" . TQ_("No") . "\' data-href=\'?disable=',questionnaire_id,'\'><i data-toggle=\'tooltip\' title=\'" . TQ_("Disable") . "\' class=\'fa fa-toggle-on fa-3x\'></i></a>&ensp;')
 		END as enabledisable,
 		CONCAT('<a href=\'?modify=',questionnaire_id,'\' class=\'btn\' title=\'" . TQ_("Edit Questionnaire") . "&ensp;',questionnaire_id,'\' data-toggle=\'tooltip\'><i class=\'fa fa-edit fa-2x \'></i></a>') as modify,
-		CONCAT('<a href=\'" . LIME_URL . "admin/admin.php?sid=',lime_sid,'\' class=\'btn\' title=\'" . T_("Edit Lime survey") . "&ensp;',lime_sid,'\' data-toggle=\'tooltip\'><i class=\'btn-lime fa fa-lemon-o fa-2x\'></i></a>') as inlime,
+		CONCAT('<a href=\'', entry_url, '/admin/survey/sa/view/surveyid/',lime_sid,'\' class=\'btn\' title=\'" . T_("Edit Lime survey") . "&ensp;',lime_sid,'\' data-toggle=\'tooltip\'><i class=\'btn-lime fa fa-lemon-o fa-2x\'></i></a>') as inlime,
 		CASE WHEN enabled = 0 THEN 
 			CONCAT('<i class=\'btn fa fa-calendar fa-2x\' style=\'color:lightgrey;\'></i>')
 		ELSE
@@ -612,7 +550,8 @@ else
 		ELSE
 			CONCAT('<a href=\'casestatus.php?questionnaire_id=',questionnaire_id,'\' class=\'btn\' title=\'" . TQ_("Case status and assignment"). "\' data-toggle=\'tooltip\'><i class=\'fa fa-question-circle fa-2x\'></i></a>')
 		END as casestatus
-		FROM questionnaire";
+    FROM questionnaire as q, remote as r
+    WHERE r.id = q.remote_id";
 	$rs = $db->GetAll($sql);
 
 	$columns = array("qid","description","status","enabledisable","outcomes","calls","casestatus","shifts","assample","quotareport","dataout","modify","setoutcomes","inlime","prefill","deletee");

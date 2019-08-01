@@ -79,6 +79,8 @@ $js_foot = array(
 				);
 global $db;
 
+$error = "";
+
 if (isset($_GET['questionnaire_id']) && isset($_GET['sample'])  && isset($_GET['call_max']) && isset($_GET['call_attempt_max']))
 {
 	//need to add sample to questionnaire
@@ -101,57 +103,106 @@ if (isset($_GET['questionnaire_id']) && isset($_GET['sample'])  && isset($_GET['
 
 	$db->Execute($sql);
 
+  foreach($_GET as $key => $val) {
+    if (substr($key,0,2) == "sv") {
+      $varid = bigintval(substr($key,2));
+      if (empty($val)) {
+        $sql = "DELETE FROM remote_sample_var
+                WHERE questionnaire_id = $questionnaire_id
+                AND var_id = $varid";
+      } else {
+        $sql = "INSERT INTO remote_sample_var (questionnaire_id,var_id,field)
+                VALUES ($questionnaire_id,$varid," . $db->qstr($val) . ")
+                ON DUPLICATE KEY UPDATE field = " . $db->qstr($val);
+      }
+      $db->Execute($sql); 
+    }
+  }
+
 	if (isset($_GET['generatecases']))
 	{
-		include_once("../functions/functions.operator.php");
+    //find the number of sample variables required
+    $sql = "SELECT count(*)
+            FROM sample_import_var_restrict
+            WHERE sample_import_id = '$sid'
+            AND type = 1";
 
-		$db->StartTrans();
+    $varsrequired = $db->GetOne($sql);
 
-		$lime_sid = $db->GetOne("SELECT lime_sid FROM questionnaire WHERE questionnaire_id = '$questionnaire_id'");
-		$testing = $db->GetOne("SELECT testing FROM questionnaire WHERE questionnaire_id = '$questionnaire_id'");
-	
-		//add limesurvey attribute for each sample var record
-		$sql = "SELECT var,type
-			FROM sample_import_var_restrict
-			WHERE sample_import_id = '$sid'";
+    $addsample = false;
 
-		$rs = $db->GetAll($sql);
+    if ($varsrequired > 0) {
+      $addsample = true;
+    }
 
-		$i = 1;
+    include_once("../functions/functions.operator.php");
+    include_once("../functions/functions.limesurvey.php");
 
-		$fields = array();
-		$fieldcontents='';
-		foreach($rs as $r)
-		{
-		    $fields[]=array('attribute_'.$i,'C','255');
-		    $fieldcontents.='attribute_'.$i.'='.$r['var']."\n";
-		    $i++;
-		}
-		$dict = NewDataDictionary($db);
-		$sqlarray = $dict->ChangeTableSQL(LIME_PREFIX ."tokens_$lime_sid", $fields);
-		$execresult=$dict->ExecuteSQLArray($sqlarray, false);
+    $db->StartTrans();
 
-		$sql = "UPDATE " . LIME_PREFIX . "surveys
-			SET attributedescriptions = " . $db->qstr($fieldcontents) . "
-			WHERE sid='$lime_sid'";
+    $lime_sid = $db->GetOne("SELECT lime_sid FROM questionnaire WHERE questionnaire_id = '$questionnaire_id'");
+    $testing = $db->GetOne("SELECT testing FROM questionnaire WHERE questionnaire_id = '$questionnaire_id'");
+  
+		//generate one case for each sample record and set outcome to goutcome 
+		$sql = "SELECT s.sample_id, sv.val as email
+			FROM sample as s
+			LEFT JOIN (sample_var as sv, sample_import_var_restrict as sivr) ON (sv.sample_id = s.sample_id and sv.var_id = sivr.var_id and sivr.type = 8)
+			WHERE s.import_id = '$sid'";
 
-		$db->Execute($sql);
+    $rs = $db->GetAll($sql);
 
-		//generate one case for each sample record and set outcome to 41
-		$sql = "SELECT sample_id
-			FROM sample
-			WHERE import_id = '$sid'";
+    $onlyvalidemail = false; 
+    if (isset($_GET['validemail'])) { 
+      $onlyvalidemail = true; 
+    } 
 
-		$rs = $db->GetAll($sql);
+    $goutcome = bigintval($_GET['goutcome']);
 
-		foreach($rs as $r)
-		{
+    foreach($rs as $r)
+    {
+      $count++;
 		  set_time_limit(30);			
-		  add_case($r['sample_id'],$questionnaire_id,"NULL",$testing,41, true);
-		}
+	//only if a valid email
+      if (!$onlyvalidemail || validate_email($r['email'])) {
+        $case_id = add_case($r['sample_id'],$questionnaire_id,"NULL",$testing,$goutcome, $addsample);
+        if ($case_id === false) {
+          $error .= "Could not add case - please ensure there enough additional attributes available in your Limesurvey participant table";
+        	$error .= "<br/>Failed to add case for record #$count";    
+        } else {
+          //add call and call attempt records
+          $resp_id = 0;
 
-		$db->CompleteTrans();
-	}
+          $sql = "SELECT respondent_id
+                  FROM respondent
+                  WHERE case_id = $case_id";
+          $rsp = $db->GetOne($sql);
+
+          if (!empty($rsp)) {
+            $resp_id = $rsp;
+          }
+
+          $sql = "INSERT INTO call_attempt (case_id,operator_id,respondent_id,start,end)
+                  VALUES ($case_id, 1, $resp_id, CONVERT_TZ(NOW(),'System','UTC'), CONVERT_TZ(NOW(),'System','UTC'))";
+          $db->Execute($sql);
+
+          $call_attempt_id = $db->Insert_ID();
+
+          $sql = "INSERT INTO `call` (operator_id,respondent_id,case_id,contact_phone_id,call_attempt_id,start,end,outcome_id,state)
+                  VALUES (1,$resp_id,$case_id,0,$call_attempt_id,CONVERT_TZ(NOW(),'System','UTC'),CONVERT_TZ(NOW(),'System','UTC'),$goutcome,5)";
+          $db->Execute($sql);
+
+          $call_id = $db->Insert_ID();
+
+          $sql = "UPDATE `case`
+                  SET last_call_id = $call_id
+                  WHERE case_id = $case_id";
+
+          $db->Execute($sql);
+        }
+      }
+    }
+    $db->CompleteTrans();
+  }
 }
 
 if (isset($_POST['edit']))
@@ -176,7 +227,23 @@ if (isset($_POST['edit']))
 		WHERE questionnaire_id = '$questionnaire_id'
 		AND sample_import_id = '$sid'";
 
-	$db->Execute($sql);
+  $db->Execute($sql);
+
+  foreach($_POST as $key => $val) {
+    if (substr($key,0,2) == "sv") {
+      $varid = bigintval(substr($key,2));
+      if (empty($val)) {
+        $sql = "DELETE FROM remote_sample_var
+                WHERE questionnaire_id = $questionnaire_id
+                AND var_id = $varid";
+      } else {
+        $sql = "INSERT INTO remote_sample_var (questionnaire_id,var_id,field)
+                VALUES ($questionnaire_id,$varid," . $db->qstr($val) . ")
+                ON DUPLICATE KEY UPDATE field = " . $db->qstr($val);
+      }
+      $db->Execute($sql); 
+    }
+  }
 }
 
 
@@ -211,6 +278,22 @@ if (isset($_GET['questionnaire_id']) && isset($_GET['rsid']))
 				<h2 class='col-lg-6'>" . T_("Sample") . ": <span class='text-primary'>" . $qs['description'] . "</span></h2>
 				<div class='clearfix'></div><div class='panel-body form-group'>";
 
+    //Get list of attributes in Limesurvey and how they link to this sample
+    //
+    $sql = "SELECT sv.var_id,sv.var,sv.type,rv.field
+            FROM sample_import_var_restrict as sv
+            LEFT JOIN remote_sample_var as rv ON (rv.var_id = sv.var_id AND rv.questionnaire_id = $questionnaire_id)
+            WHERE sv.sample_import_id = $sid";
+
+    $svars = $db->GetAll($sql);
+
+    include_once("../functions/functions.limesurvey.php");
+
+    $attributes = lime_get_token_attributes($questionnaire_id);
+
+
+
+
 		$allownew = $selected ="";
 		if ($qs['random_select'] == 1)
 			$selected = "checked=\"checked\"";
@@ -234,7 +317,33 @@ if (isset($_GET['questionnaire_id']) && isset($_GET['rsid']))
 		<label for="allownew" class="control-label col-sm-4"><?php echo T_("Allow new numbers to be drawn?");?></label>
 		<div class="col-sm-1"><input type="checkbox" id = "allownew" name="allownew" <?php echo $allownew;?> class="col-sm-1" data-toggle="toggle" data-size="small" data-on="<?php echo T_("Yes");?>" data-off="<?php echo T_("No");?>" data-width="85"/></div><br/><br/><br/>
 		<input type="hidden" name="questionnaire_id" value="<?php  print($questionnaire_id); ?>"/>
-		<input type="hidden" name="sample_import_id" value="<?php  print($sid); ?>"/>
+    <input type="hidden" name="sample_import_id" value="<?php  print($sid); ?>"/>
+    <?php
+    print "<h4>" . T_("Sample variables to copy to Limesurvey participant table") . "</h4>";
+
+      print "<table class='table table-condensed'><tr><th>" . T_("Sample variable") . "</th><th>" . T_("Limesurvey participant variable") . "</th><tr>";
+      foreach($svars as $sv) {
+        print "<tr><td><label for='sv{$sv['var_id']}'>{$sv['var']}</label></td>";   
+        print "<td><select name='sv{$sv['var_id']}' id='sv{$sv['var_id']}'>";
+        print "<option value=''>" . T_("Do not copy to Limesurvey") . "</option>";
+        foreach($attributes as $key => $val) {
+          $sel = "";
+          if ($sv['field'] == $val ||
+            ($sv['type'] == 6 && $val == 'firstname') ||
+            ($sv['type'] == 7 && $val == 'lastname') ||
+            ($sv['type'] == 8 && $val == 'email') ||
+            ($sv['type'] == 9 && $val == 'token') 
+          ) {
+            $sel = "selected='selected'";
+          }
+          print "<option $sel value='$val'>$val</option>";
+        }
+        print "</select></td></tr>";
+      }      
+      print "</table>"
+
+?>
+
 		<div class="col-sm-offset-4 col-sm-3"><button type="submit" name="edit" class="btn btn-primary"><i class="fa fa-floppy-o fa-lg"></i>&emsp;<?php echo T_("Save changes");?></button></div>
 		</form></div>
 
@@ -306,6 +415,9 @@ xhtml_head(T_("Assign samples to questionnaires"),true,$css,$js_head,false,false
 
 print "<a href='' onclick='history.back();return false;' class='btn btn-default pull-left'><i class='fa fa-chevron-left fa-lg text-primary'></i>&emsp;" . T_("Go back") . "</a>";
 
+if (!empty($error)) {
+  print "<div class='alert text-danger'>$error</div>";
+}
 	
 $questionnaire_id = false;
 if (isset($_GET['questionnaire_id'])) 	$questionnaire_id = bigintval($_GET['questionnaire_id']);	
@@ -316,8 +428,11 @@ print "</div>";
 
 if ($questionnaire_id != false)
 {
-	
-	print "<div class='panel-body'>
+  if ($error != "") {
+    print "<div class='alert text-danger'>$error</div>";
+  }
+  
+  print "<div class='panel-body'>
 			<h3 class=''><i class='fa fa-list-ul text-primary'></i>&emsp;". T_("Samples assigned to questionnaire") ."  <span class='text-primary'>" . $db->GetOne("SELECT description from questionnaire WHERE questionnaire_id = $questionnaire_id") . "</span></h3>";
 
 	$sql = "SELECT q.sort_order, si.description as description,si.sample_import_id, 
@@ -327,7 +442,7 @@ if ($questionnaire_id != false)
 			CASE WHEN q.answering_machine_messages = 0 THEN '". TQ_("Never") . "' ELSE q.answering_machine_messages END as answering_machine_messages,
 			CASE WHEN q.allow_new = 0 THEN '". TQ_("No") ."' ELSE '".TQ_("Yes")."' END as allow_new,
 			CONCAT('<a href=\"?edit=edit&amp;questionnaire_id=$questionnaire_id&amp;rsid=', si.sample_import_id ,'\" data-toggle=\'tooltip\' title=\'". TQ_("Edit") ."\' class=\'btn center-block\'><i class=\'fa fa-pencil-square-o fa-lg\'></i></a>') as edit,
-			CONCAT('<a href=\'\' data-toggle=\'confirmation\' data-title=\'".TQ_("Are you sure?")."\' data-btnOkLabel=\'&emsp;".TQ_("Yes")."\' data-btnCancelLabel=\'&emsp;".TQ_("No")."\' data-placement=\'top\' data-href=\"?questionnaire_id=$questionnaire_id&amp;rsid=', si.sample_import_id ,'\" class=\'btn center-block\'><i class=\'fa fa-chain-broken fa-lg\' data-toggle=\'tooltip\' title=\'". TQ_("Click to unassign") ."\'></i></a>') as unassign
+			CONCAT('<a href=\'\' data-toggle=\'confirmation\' data-title=\'".TQ_("ARE YOU SURE?")."\' data-btnOkLabel=\'&emsp;".TQ_("Yes")."\' data-btnCancelLabel=\'&emsp;".TQ_("No")."\' data-placement=\'top\' data-href=\"?questionnaire_id=$questionnaire_id&amp;rsid=', si.sample_import_id ,'\" class=\'btn center-block\'><i class=\'fa fa-chain-broken fa-lg\' data-toggle=\'tooltip\' title=\'". TQ_("Click to unassign") ."\'></i></a>') as unassign
 			FROM questionnaire_sample as q, sample_import as si
 			WHERE q.sample_import_id = si.sample_import_id
 			AND q.questionnaire_id = '$questionnaire_id'
@@ -377,12 +492,41 @@ if ($questionnaire_id != false)
 	if (!empty($qs))
 	{
 		print "<div class='clearfix '></div>";
-		print "<div class='panel-body form-group'><h3 class='text-primary col-lg-offset-4'>" . T_("Add a sample to this questionnaire:") . "</h3>";
+    print "<div class='panel-body form-group'><h3 class='text-primary col-lg-offset-4'>" . T_("Add a sample to this questionnaire:") . "</h3>";
+
+    $sample_import_id = $qs[0]['sample_import_id'];
+    if (isset($_GET['sample'])) {
+      $sample_import_id = bigintval($_GET['sample']);
+    }
+
+    //Get list of attributes in Limesurvey and how they link to this sample
+    //
+    $sql = "SELECT sv.var_id,sv.var,sv.type,rv.field
+            FROM sample_import_var_restrict as sv
+            LEFT JOIN remote_sample_var as rv ON (rv.var_id = sv.var_id AND rv.questionnaire_id = $questionnaire_id)
+            WHERE sv.sample_import_id = $sample_import_id";
+
+    $svars = $db->GetAll($sql);
+
+    include_once("../functions/functions.limesurvey.php");
+
+    $attributes = lime_get_token_attributes($questionnaire_id);
+
+    if ($attributes == false) {
+      print "<div>" . T_("Unable to access token/participants table in Limesurvey. Please confirm that this survey has a participant table created.") . "</div>";
+    } else {
+
+    $sql = "SELECT outcome_id,description
+            FROM outcome
+            WHERE 1";
+    $ou = $db->GetAll($sql);
+
+
 		?>
 		<form action="" method="get" class="form-horizontal">
 		<label for="sample" class="control-label  col-lg-4"><?php  echo T_("Select sample:");?></label>
-		<div class="col-lg-4"><select name="sample" id="sample" class="form-control " >
-		<?php foreach($qs as $q) { print "<option value=\"{$q['sample_import_id']}\">{$q['description']}</option>"; } ?> </select></div><br/><br/>
+    <div class="col-lg-4"><select name="sample" id="sample" class="form-control" onchange="location.href = 'assignsample.php?questionnaire_id=<?= $questionnaire_id;?>&sample=' + this.value;">
+		<?php foreach($qs as $q) { $sel = ""; if ($q['sample_import_id'] == $sample_import_id) $sel = "selected=\"selected\""; print "<option $sel value=\"{$q['sample_import_id']}\">{$q['description']}</option>"; } ?> </select></div><br/><br/>
 		
 		<label for="call_max" class="control-label col-lg-4"><?php echo T_("Max calls");?></label>
 		<div class="col-sm-1"><input type="number" min="0" max="20" style="width:6em;" name="call_max" id="call_max" value="0" class="form-control"/></div>
@@ -404,20 +548,58 @@ if ($questionnaire_id != false)
 		<div class="col-sm-1"><input type="checkbox" id = "allownew" name="allownew" checked="checked" class="col-sm-1" data-toggle="toggle" data-size="small" data-on="<?php echo T_("Yes");?>" data-off="<?php echo T_("No");?>" data-width="85"/></div>
 		<label class="control-label text-info"><?php   ;?></label><br/><br/><br/>
 		
-		<?php $self_complete = $db->GetOne("SELECT self_complete FROM questionnaire WHERE questionnaire_id = '$questionnaire_id'");
-		if ($self_complete) {?>
-		<label for="generatecases" class="control-label col-lg-4"><?php echo T_("Generate cases for all sample records and set outcome to 'Self completion email invitation sent'?");?></label>
-		<div class="col-sm-1"><input type="checkbox" id = "generatecases" name="generatecases" class="col-sm-1" data-toggle="toggle" data-size="small" data-on="<?php echo T_("Yes");?>" data-off="<?php echo T_("No");?>" data-width="85"/></div>
-		<em class="control-label"> * <?php echo T_("Ideal if you intend to send an email invitation to sample members before attempting to call using queXS");?></em>
+		<label for="generatecases" class="control-label col-lg-4"><?php echo T_("Generate cases for all sample records?");?></label>
+		<div class="col-sm-1"><input type="checkbox" onchange="if(this.checked==true) {$('#ve').show();} else {$('#ve').hide();}"  id = "generatecases" name="generatecases" class="col-sm-1" data-toggle="toggle" data-size="small" data-on="<?php echo T_("Yes");?>" data-off="<?php echo T_("No");?>" data-width="85"/></div>
+		<em class="control-label"> * <?php echo T_("Ideal if you intend to send an email invitation to sample members before attempting to call using queXS"); ?></em>
 		<div class='clearfix '></div></br>
-		<?php }?>
+
+    <div id='ve' style='display:none'>
+
+    <label for="goutcome" class="control-label col-lg-4"><?php echo T_("Select an outcome to assign generated cases to");?></label>
+    <div class="col-lg-4"><select name="goutcome" id="goutcome" class="form-control " >
+    <?php foreach($ou as $q) { $sel =""; if ($q['outcome_id'] == 41) { $sel="selected='selected'";} print "<option $sel value=\"{$q['outcome_id']}\">{$q['description']}</option>"; } ?> </select></div>
+    <div class='clearfix '></div></br>
+
+    <label for="validemail" class="control-label col-lg-4"><?php echo T_("Only generate cases where there is a valid email attached?");?></label>
+    <div class="col-sm-1"><input type="checkbox" checked="checked" id = "validemail" name="validemail" class="col-sm-1" data-toggle="toggle" data-size="small" data-on="<?php echo T_("Yes");?>" data-off="<?php echo T_("No");?>" data-width="85"/></div>
+    <div class='clearfix '></div></br>
+
+    </div>
+
+
+<?php
+    print "<h4>" . T_("Sample variables to copy to Limesurvey participant table") . "</h4>";
+
+      print "<table class='table table-condensed'><tr><th>" . T_("Sample variable") . "</th><th>" . T_("Limesurvey participant variable") . "</th><tr>";
+      foreach($svars as $sv) {
+        print "<tr><td><label for='sv{$sv['var_id']}'>{$sv['var']}</label></td>";   
+        print "<td><select name='sv{$sv['var_id']}' id='sv{$sv['var_id']}'>";
+        print "<option value=''>" . T_("Do not copy to Limesurvey") . "</option>";
+        foreach($attributes as $key => $val) {
+          $sel = "";
+          if ($sv['field'] == $val ||
+            ($sv['type'] == 6 && $val == 'firstname') ||
+            ($sv['type'] == 7 && $val == 'lastname') ||
+            ($sv['type'] == 8 && $val == 'email') ||
+            ($sv['type'] == 9 && $val == 'token') 
+          ) {
+            $sel = "selected='selected'";
+          }
+          print "<option $sel value='$val'>$val</option>";
+        }
+        print "</select></td></tr>";
+      }      
+      print "</table>"
+
+?>
 
 		<input type="hidden" name="questionnaire_id" value="<?php print($questionnaire_id);?>"/>
 		
 		<div class="col-lg-offset-4 col-lg-3"><button type="submit" name="add_sample" class="btn btn-primary"><i class="fa fa-plus-circle fa-lg"></i>&emsp;<?php echo T_("Add sample");?></button></div>
 		
 		</form></div>
-		<?php 
+<?php 
+    }
 	}
 }
 

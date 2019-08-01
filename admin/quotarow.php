@@ -431,26 +431,27 @@ if ($questionnaire_id != false)
 
       $lime_sid = $db->GetOne($sql);
 
-      $ssgqa = "''";
+      $ssgqa = "";
       if (isset($_GET['sgqa']))
-        $ssgqa = $db->qstr($_GET['sgqa']);
+        $ssgqa = $_GET['sgqa'];
 
-      //select question + corrected question order as in questionnaire with subquestions 
-  		$sql = "SELECT CONCAT( lq.sid, 'X', lq.gid, 'X', CASE WHEN lq.parent_qid = 0 THEN lq.qid ELSE CONCAT(lq.parent_qid, lq.title) END) as value, CONCAT( lq.sid, 'X', lq.gid, 'X', CASE WHEN lq.parent_qid = 0 THEN lq.qid ELSE CONCAT(lq.parent_qid, lq.title) END, '&ensp;->&ensp;' , CASE WHEN lq.parent_qid = 0 THEN lq.question ELSE CONCAT(lq2.question, ' : ', lq.question) END) as description, CASE WHEN $ssgqa LIKE CONCAT( lq.sid, 'X', lq.gid, 'X', CASE WHEN lq.parent_qid = 0 THEN lq.qid ELSE CONCAT(lq.parent_qid, lq.title) END) THEN 'selected=\'selected\'' ELSE '' END AS selected
-	  		FROM `" . LIME_PREFIX . "questions` AS lq
-  			LEFT JOIN `" . LIME_PREFIX . "questions` AS lq2 ON ( lq2.qid = lq.parent_qid )
-  			JOIN `" . LIME_PREFIX . "groups` as g ON (g.gid = lq.gid)
-  			WHERE lq.sid = '$lime_sid'
-  			ORDER BY CASE WHEN lq2.question_order IS NULL THEN lq.question_order ELSE lq2.question_order + (lq.question_order / 1000) END ASC";
+        include_once("../functions/functions.limesurvey.php");
 
-	  	$rsgqa = $db->GetAll($sql);
-  
+	  	$rsgqa = lime_list_questions($questionnaire_id);
+	 
       if (!empty($rsgqa))
       {
         print "<div class=''><form method='post' action='?qsqri=$qsqri&amp;edit=edit' class='form-group'>";
         print "<h3>" . T_("Add restriction based on answered questions") . " </h3>";
-		print "<label for='sgqa' class='control-label'>" . T_("Select Question") . ": </label>";
-        display_chooser($rsgqa,"sgqa","sgqa",true,"edit=edit&amp;qsqri=$qsqri");
+        print "<label for='sgqa' class='control-label'>" . T_("Select Question") . ": </label>";
+
+        for ($i=0; $i<count($rsgqa); $i++)
+    	  {
+          $rsgqa[$i]['description'] = substr(strip_tags($rsgqa[$i]['question']),0,400);
+          $rsgqa[$i]['value'] = $rsgqa[$i]['title'];
+      	}
+
+        display_chooser($rsgqa,"sgqa","sgqa",true,"edit=edit&amp;qsqri=$qsqri",true,true,array('title',$ssgqa));
 		
 		if (isset($_GET['sgqa'])){
         ?>
@@ -468,18 +469,22 @@ if ($questionnaire_id != false)
 		if (isset($_GET['sgqa']))
 			{
 				$sgqa = $_GET['sgqa'];
-				$qid = explode("X", $sgqa);
-				$qid = $qid[2];
-		
-				$sql = "SELECT CONCAT('<b class=\'fa\'>&emsp;', l.code , '</b>')as code, l.answer as title
-					FROM `" . LIME_PREFIX . "answers` as l
-					WHERE l.qid = '$qid'";
-				$rsc = $db->GetAll($sql);
+
+                $rsc = lime_list_answeroptions($questionnaire_id,$sgqa);    
+
+      $list = array();
+
+      foreach($rsc['answeroptions'] as $key=>$val) {
+        $list[] = array('code' => $key, 'answer' => $val['answer']);
+      }
+
+				
+
 			}
-		if (!isset($rsc) || empty($rsc))
+		if (!isset($rsc['answeroptions']) || is_string($rsc['answeroptions']))
 			print "<h4 class= 'alert alert-info'>" . T_("No labels defined for this question") ."</h4>";
 		else 
-			xhtml_table($rsc,array('code','title'),array(T_("Code value"), T_("Description")));
+      xhtml_table($list,array('code','answer'),array(T_("Code value"), T_("Description")));
 		}
 		else { print "</form>";	}
 		print "</div></div>";
@@ -513,8 +518,8 @@ if ($questionnaire_id != false)
 	  if (isset($_GET['sample_var_id'])) $ssample_var_id = $db->qstr($_GET['sample_var_id']);   
 
       //add sample references (records from sample to exclude when quota reached)
-			$sql = "SELECT sivr.var_id as value, sivr.var as description, 
-					CASE WHEN sivr.var_id = $ssample_var_id THEN 'selected=\'selected\'' ELSE '' END AS selected
+			$sql = "SELECT sivr.var_id as value, MIN(sivr.var) as description, 
+				MIN(CASE WHEN sivr.var_id = $ssample_var_id THEN 'selected=\'selected\'' ELSE '' END) AS selected
       				FROM `sample_import_var_restrict` as sivr, `sample_var` AS sv, `sample` AS s 
       				WHERE sivr.sample_import_id = $sample_import_id
       				AND s.sample_id = sv.sample_id
@@ -539,7 +544,7 @@ if ($questionnaire_id != false)
 			&emsp;<label for="comparisons" class="control-label"><?php  echo T_("The type of comparison"); ?></label>:&emsp;<select name="comparisons" id="comparisons" class="form-control"><option value="LIKE">LIKE</option><option value="NOT LIKE">NOT LIKE</option><option value="=">=</option><option value="!=">!=</option><option value="&lt;">&lt;</option><option value="&gt;">&gt;</option><option value="&lt;=">&lt;=</option><option value="&gt;=">&gt;=</option></select>&emsp;
 			<label for="exclude_val" class="control-label"><?php  echo T_("Value"); ?>:&emsp;</label>
 		<?php 		
-			$sql = "SELECT sv.val as value, sv.val as description, ''  AS selected, sivr.var as var
+			$sql = "SELECT sv.val as value, sv.val as description, ''  AS selected, MIN(sivr.var) as var
 				FROM sample_var AS sv, sample AS s, `sample_import_var_restrict` as sivr
 				WHERE s.import_id = $sample_import_id
 				AND s.sample_id = sv.sample_id

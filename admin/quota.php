@@ -191,17 +191,17 @@ if ($questionnaire_id != false)
 	
 		$sgqa = false;
 		if (isset($_GET['sgqa'])) 	$sgqa = $_GET['sgqa'];
-	
-		$sql = "SELECT CONCAT( lq.sid, 'X', lq.gid, 'X', CASE WHEN lq.parent_qid = 0 THEN lq.qid ELSE CONCAT(lq.parent_qid, lq.title) END) as value,
-		CONCAT( lq.sid, 'X', lq.gid, 'X', CASE WHEN lq.parent_qid = 0 THEN lq.qid ELSE CONCAT(lq.parent_qid, lq.title) END, '&ensp;->&ensp;' , CASE WHEN lq.parent_qid = 0 THEN lq.question ELSE CONCAT(lq2.question, ' :  ', lq.question) END) as description,
-		CASE WHEN CONCAT( lq.sid, 'X', lq.gid, 'X', CASE WHEN lq.parent_qid = 0 THEN lq.qid ELSE CONCAT(lq.parent_qid, lq.title) END) = '$sgqa' THEN 'selected=\'selected\'' ELSE '' END AS selected
-			FROM `" . LIME_PREFIX . "questions` AS lq
-			LEFT JOIN `" . LIME_PREFIX . "questions` AS lq2 ON ( lq2.qid = lq.parent_qid )
-			JOIN `" . LIME_PREFIX . "groups` as g ON (g.gid = lq.gid)
-			WHERE lq.sid = '$lime_sid'
-			ORDER BY CASE WHEN lq2.question_order IS NULL THEN lq.question_order ELSE lq2.question_order + (lq.question_order / 1000) END ASC";
 
-		display_chooser($db->GetAll($sql),"sgqa","sgqa",true,"questionnaire_id=$questionnaire_id&amp;sample_import_id=$sample_import_id",true,true,false,true,"form-group");
+        include_once("../functions/functions.limesurvey.php");
+
+        $rs = lime_list_questions($questionnaire_id);
+
+    for ($i=0; $i<count($rs); $i++)
+	  {
+      $rs[$i]['description'] = substr(strip_tags($rs[$i]['question']),0,400);
+      $rs[$i]['value'] = $rs[$i]['title'];
+  	}
+		display_chooser($rs,"sgqa","sgqa",true,"questionnaire_id=$questionnaire_id&amp;sample_import_id=$sample_import_id",true,true,array('title',$sgqa),true,"form-group");
 		
 		print "<div class='clearfix'></div>";
 	
@@ -244,16 +244,19 @@ if ($questionnaire_id != false)
 			$qid = explode("X", $sgqa);
 			$qid = $qid[2];
 
-			$sql = "SELECT CONCAT('<b class=\'fa\'>&emsp;', l.code , '</b>')as code,l.answer as title
-				FROM `" . LIME_PREFIX . "answers` as l 
-				WHERE l.qid = '$qid'";
 
-			$rs = $db->GetAll($sql);
+            $rs = lime_list_answeroptions($questionnaire_id,$sgqa);
 
-			if (!isset($rs) || empty($rs))
+      $list = array();
+
+      foreach($rs['answeroptions'] as $key=>$val) {
+        $list[] = array('code' => $key, 'answer' => $val['answer']);
+      }
+
+			if (!isset($rs['answeroptions']) || is_string($rs['answeroptions']))
 				print "<p class='well text-info'>" . T_("No labels defined for this question") ."</p>";
 			else
-				xhtml_table($rs,array('code','title'),array(T_("Code value"), T_("Description")));
+				xhtml_table($list,array('code','answer'),array(T_("Code value"), T_("Description")));
 			
 			
 			print "</div>";

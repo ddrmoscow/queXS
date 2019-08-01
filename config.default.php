@@ -120,19 +120,15 @@ if (!defined('AUTO_POPUP')) define('AUTO_POPUP',false);
 if (!defined('SUPERVISOR_EXTENSION')) define('SUPERVISOR_EXTENSION',"1000");
 
 /**
- * The path to limesurvey
- */
-if (!defined('LIME_PATH')) define('LIME_PATH', 'include/limesurvey/');
-
-/**
- * Automatically move to the next question when clicked in limesurvey
- */
-if (!defined('LIME_AUTO_ADVANCE')) define('LIME_AUTO_ADVANCE', true);
-
-/**
  * The path to queXS from the server root
  */
 if (!defined('QUEXS_PATH')) define('QUEXS_PATH', '/quexs/');
+
+/**
+ * The port queXS is running on (default blank, use :8080 for example if using 
+ * port 8080)
+ */
+if (!defined('QUEXS_PORT')) define('QUEXS_PORT', '');
 
 $protocol = "http://";
 
@@ -142,14 +138,9 @@ if (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' || $_SERVER['SERVER
 }
 
 /**
- * The complete URL to limesurvey
- */
-if (!defined('LIME_URL')) define('LIME_URL', $protocol . $_SERVER['SERVER_NAME'] . QUEXS_PATH . LIME_PATH);
-
-/**
  * The complete URL to this copy of queXS
  */
-if (!defined('QUEXS_URL')) define('QUEXS_URL', $protocol . $_SERVER['SERVER_NAME'] . QUEXS_PATH);
+if (!defined('QUEXS_URL')) define('QUEXS_URL', $protocol . $_SERVER['SERVER_NAME'] . QUEXS_PORT . QUEXS_PATH);
 
 /**
  * The default locale (language)
@@ -166,7 +157,7 @@ if (!defined('PHP_EXEC')) define('PHP_EXEC', "php");
 /**
  * Path to ADODB
  */
-if (!defined('ADODB_PATH')) define('ADODB_PATH',dirname(__FILE__).'/include/limesurvey/classes/adodb/');
+if (!defined('ADODB_PATH')) define('ADODB_PATH','/usr/share/php/adodb/');
 
 /**
  * Whether to automatically assign a call as complete if VoIP disabled at the end of a completed questionnaire
@@ -204,6 +195,7 @@ if (!defined('TAB_CASENOTES')) define('TAB_CASENOTES', true);
 if (!defined('TAB_CALLLIST')) define('TAB_CALLLIST', true);
 if (!defined('TAB_SHIFTS')) define('TAB_SHIFTS', true);
 if (!defined('TAB_APPOINTMENTLIST')) define('TAB_APPOINTMENTLIST', true);
+if (!defined('TAB_MYAPPOINTMENTLIST')) define('TAB_MYAPPOINTMENTLIST', true);
 if (!defined('TAB_PERFORMANCE')) define('TAB_PERFORMANCE', true);
 if (!defined('TAB_CALLHISTORY')) define('TAB_CALLHISTORY', true);
 if (!defined('TAB_PROJECTINFO')) define('TAB_PROJECTINFO', true);
@@ -261,22 +253,7 @@ if (!defined('DB_USER')) define('DB_USER', 'quexs');
 if (!defined('DB_PASS')) define('DB_PASS', 'quexs');
 if (!defined('DB_HOST')) define('DB_HOST', 'localhost');
 if (!defined('DB_NAME')) define('DB_NAME', 'quexs');
-if (!defined('DB_TYPE')) define('DB_TYPE', 'mysqlt');
-
-/**
- * The prefix for the limesurvey database
- */
-if (!defined('LIME_PREFIX')) define('LIME_PREFIX','lime_');
-
-/**
- * Limesurvey database information (default is same as queXS database)
- */
-if (!defined('LDB_USER')) define('LDB_USER', DB_USER);
-if (!defined('LDB_PASS')) define('LDB_PASS', DB_PASS);
-if (!defined('LDB_HOST')) define('LDB_HOST', DB_HOST);
-if (!defined('LDB_NAME')) define('LDB_NAME', DB_NAME);
-if (!defined('LDB_TYPE')) define('LDB_TYPE', DB_TYPE);
-
+if (!defined('DB_TYPE')) define('DB_TYPE', 'mysqli');
 
 if (!defined('COMPANY_NAME')) define ('COMPANY_NAME', 'queXS ');
 if (!defined('ADMIN_PANEL_NAME')) define ('ADMIN_PANEL_NAME',' Administration Panel');
@@ -286,6 +263,15 @@ if (!defined('ADMIN_PANEL_NAME')) define ('ADMIN_PANEL_NAME',' Administration Pa
  * - If changed must also be changed in the lime_settings_global table
  */
 if (!defined('LS_SESSION_NAME')) define ('LS_SESSION_NAME', 'ls28629164789259281352');
+
+/* CAS Authentication
+ *
+ */
+if (!defined('CAS_ENABLED')) define ('CAS_ENABLED', false);
+if (!defined('CAS_AUTH_SERVER')) define ('CAS_AUTH_SERVER', 'www.acspri.org.au');
+if (!defined('CAS_AUTH_PORT')) define ('CAS_AUTH_PORT', 443);
+if (!defined('CAS_AUTH_URI')) define ('CAS_AUTH_URI', 'cas');
+
 
 /**
  * Debugging

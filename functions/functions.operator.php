@@ -44,27 +44,6 @@ include_once(dirname(__FILE__).'/../config.inc.php');
 include_once(dirname(__FILE__).'/../db.inc.php');
 
 /**
-* Creates a random sequence of characters
-*
-* @param mixed $length Length of resulting string
-* @param string $pattern To define which characters should be in the resulting string
-* 
-* From Limesurvey
-*/
-function sRandomChars($length = 15,$pattern="23456789abcdefghijkmnpqrstuvwxyz")
-{
-    $patternlength = strlen($pattern)-1;
-    for($i=0;$i<$length;$i++)
-    {   
-        if(isset($key))
-            $key .= $pattern{mt_rand(0,$patternlength)};
-        else
-            $key = $pattern{mt_rand(0,$patternlength)};
-    }
-    return $key;
-}
-
-/**
  * Check if the project associated with this case is using 
  * questionnaire availability
  * 
@@ -354,10 +333,23 @@ function add_case($sample_id,$questionnaire_id,$operator_id = "NULL",$testing = 
 {
 	global $db;
 
+  //if token is specified, get from sample
+  $sql = "SELECT sv.val
+          FROM sample_var as sv, sample_import_var_restrict as sivr
+          WHERE sv.sample_id = '$sample_id'
+          AND sv.var_id = sivr.var_id
+          AND sivr.type = 9"; //9 is the token value
+
+  $dtoken = $db->GetOne($sql);
+
 	$ttries = 0;
 	
 	do {
-	$token = sRandomChars();
+    if (empty($dtoken)) {
+      $token = sRandomChars();
+    } else {
+      $token = $dtoken;
+    }
 
 		$sql = "SELECT count(*) as c
 			FROM `case`
@@ -365,7 +357,9 @@ function add_case($sample_id,$questionnaire_id,$operator_id = "NULL",$testing = 
 
 		$ttries++;
 	} while ($db->GetOne($sql) > 0 && $ttries < 10);
-	
+
+  if ($ttries >= 10)  //failed to get a token
+    return false;
 
 	$sql = "INSERT INTO `case` (case_id, sample_id, questionnaire_id, last_call_id, current_operator_id, current_call_id, current_outcome_id,token)
 		VALUES (NULL, $sample_id, $questionnaire_id, NULL, $operator_id, NULL, '$current_outcome_id','$token')";
@@ -413,7 +407,7 @@ function add_case($sample_id,$questionnaire_id,$operator_id = "NULL",$testing = 
 				$tnum =  preg_replace("/[^0-9]/", "",$r5v['phone']); 
 				if (empty($tnum)) $tnum = "88888888"; //handle error condition
 				$sql = "INSERT INTO contact_phone (case_id,priority,phone,description)
-					VALUES ($case_id,$i,$tnum,'')";
+					VALUES ($case_id,$i,'$tnum','')";
 				$db->Execute($sql);
 				$i++;
 			}
@@ -453,76 +447,35 @@ function add_case($sample_id,$questionnaire_id,$operator_id = "NULL",$testing = 
 
 		if ($lime_sid)
 		{
-			$lfirstname = "''";
-			$llastname = "''";
-			$lemail = "''";
-	
-			if ($addlimeattributes)
-			{
-				$lfirstname = $db->qstr($db->GetOne("SELECT sv.val 
-								FROM sample_var as sv, sample_import_var_restrict as s 
-								WHERE sv.var_id = s.var_id
-								AND sv.sample_id = '$sample_id'
-								AND s.type = '6'"));
+      $params = array('token' => $token);
 
-				$llastname = $db->qstr($db->GetOne("SELECT sv.val 
-								FROM sample_var as sv, sample_import_var_restrict as s 
-								WHERE sv.var_id = s.var_id
-								AND sv.sample_id = '$sample_id'
-								AND s.type = '7'"));
+      //get remote sample fields for this questionaire/sample only
+      $sql = "SELECT rv.var_id,rv.field
+              FROM remote_sample_var as rv
+              JOIN sample as s ON (s.sample_id = $sample_id)
+              JOIN sample_import_var_restrict as sv ON (s.import_id = sv.sample_import_id AND rv.var_id = sv.var_id)
+              WHERE questionnaire_id = $questionnaire_id";
 
-				$lemail = $db->qstr($db->GetOne("SELECT sv.val 
-								FROM sample_var as sv, sample_import_var_restrict as s 
-								WHERE sv.var_id = s.var_id
-								AND sv.sample_id = '$sample_id'
-								AND s.type = '8'"));
+      $ps = $db->GetAll($sql);
 
-			}
-	
-			$sql = "INSERT INTO ".LIME_PREFIX."tokens_$lime_sid (tid,firstname,lastname,email,token,language,sent,completed,mpid)
-			VALUES (NULL,$lfirstname,$llastname,$lemail,'$token','".DEFAULT_LOCALE."','N','N',NULL)";
+      //copy across all selected variables to matching Limesurvey fields
+      foreach($ps as $p) {
+        $params[$p['field']] = $db->GetOne("SELECT val 
+              FROM sample_var 
+              WHERE var_id = {$p['var_id']}
+              AND sample_id = '$sample_id'");     
+      }
 
-			$db->Execute($sql);
+      //include limesurvey functions
+	  	include_once(dirname(__FILE__).'/functions.limesurvey.php');
 
-			$tid = $db->Insert_Id();
+      $ret = lime_add_token($questionnaire_id,$params);      
 
-			if ($addlimeattributes)
-			{			
-				//also add sample values as attributes
-				//match by name
-
-				$sql = "SELECT attributedescriptions
-					FROM " . LIME_PREFIX . "surveys
-					WHERE sid = '$lime_sid'";
-
-				$names = $db->GetOne($sql);
-    				$attdescriptiondata=explode("\n",$names);
-    				$atts=array();
-
-  			        foreach ($attdescriptiondata as $attdescription)
-				{				
-					if (!empty($attdescription))
-					        $atts['attribute_'.substr($attdescription,10,strpos($attdescription,'=')-10)] = substr($attdescription,strpos($attdescription,'=')+1);
-				}
-
-				foreach($atts as $key => $val)
-				{
-					$lval = $db->GetOne("SELECT sv.val 
-								FROM sample_var as sv, sample_import_var_restrict as s 
-								WHERE sv.var_id = s.var_id
-								AND sv.sample_id = '$sample_id'
-								AND s.var LIKE '$val'");
-
-					$lval = $db->qstr($lval);
-		
-					$sql = "UPDATE " . LIME_PREFIX . "tokens_$lime_sid
-						SET $key = $lval
-						WHERE tid = '$tid'";
-
-					$db->Execute($sql);
-				}
-
-			}
+      //fail to create case if can't add remote token
+      if ($ret === false) {
+        $db->FailTrans();
+        $case_id = false;
+      }
 		}
 	}
 
@@ -567,7 +520,7 @@ function get_case_id($operator_id, $create = false)
 
 		$sql = "SELECT cq.case_id, cq.case_queue_id
 			FROM case_queue as cq, `case` as c
-			WHERE cq.operator_id = '$operator_id'
+			WHERE (cq.operator_id = '$operator_id' OR cq.operator_id = 0)
 			AND cq.case_id = c.case_id
 			AND c.current_operator_id IS NULL
 			ORDER BY cq.sortorder ASC
@@ -575,7 +528,7 @@ function get_case_id($operator_id, $create = false)
 		
 		$sq = $db->GetRow($sql);
 
-		if (isset($rnc['next_case_id']) && !empty($rnc['next_case_id']))
+		if ($create && isset($rnc['next_case_id']) && !empty($rnc['next_case_id']))
 		{
 			$case_id = $rnc['next_case_id'];
 
@@ -602,7 +555,7 @@ function get_case_id($operator_id, $create = false)
 			}
 
 		}
-		else if (isset($sq['case_id']) && !empty($sq['case_id']))
+		else if ($create && isset($sq['case_id']) && !empty($sq['case_id']))
 		{
 			$case_id = $sq['case_id'];
 			$case_queue_id = $sq['case_queue_id'];
@@ -709,8 +662,8 @@ function get_case_id($operator_id, $create = false)
 					JOIN operator_skill as os on (os.operator_id = op.operator_id and os.outcome_type_id = ou.outcome_type_id)
 					WHERE c.current_operator_id IS NULL
 					AND ((apn.appointment_id IS NOT NULL) OR (casa.case_id IS NULL) OR (ava.day_of_week = DAYOFWEEK(CONVERT_TZ(NOW(),'System',s.Time_zone_name)) AND TIME(CONVERT_TZ(NOW(), 'System' , s.Time_zone_name)) >= ava.start AND TIME(CONVERT_TZ(NOW(), 'System' , s.Time_zone_name)) <= ava.end  ))
-      AND ((apn.appointment_id IS NOT NULL) OR (qast.questionnaire_id IS NULL) OR ((SELECT COUNT(*) FROM availability WHERE availability.availability_group_id = qast.availability_group_id AND (availability.day_of_week = DAYOFWEEK(CONVERT_TZ(NOW(),'System',s.Time_zone_name)) AND TIME(CONVERT_TZ(NOW(), 'System' , s.Time_zone_name)) >= availability.start AND TIME(CONVERT_TZ(NOW(), 'System' , s.Time_zone_name)) <= availability.end)) >= 1 AND (SELECT COUNT(call_attempt_id) FROM `call_attempt`, availability WHERE call_attempt.case_id = c.case_id AND (availability.availability_group_id = qast.availability_group_id AND (availability.day_of_week = DAYOFWEEK(CONVERT_TZ(call_attempt.start,'UTC',s.Time_zone_name)) AND TIME(CONVERT_TZ(call_attempt.start, 'UTC' , s.Time_zone_name)) >= availability.start AND TIME(CONVERT_TZ(call_attempt.start, 'UTC' , s.Time_zone_name)) <= availability.end))) = (SELECT (SELECT COUNT(*) FROM availability, call_attempt WHERE call_attempt.case_id = c.case_id AND availability.availability_group_id = availability_group.availability_group_id AND (availability.day_of_week = DAYOFWEEK(CONVERT_TZ(call_attempt.start,'UTC',s.Time_zone_name)) AND TIME(CONVERT_TZ(call_attempt.start, 'UTC' , s.Time_zone_name)) >= availability.start AND TIME(CONVERT_TZ(call_attempt.start, 'UTC' , s.Time_zone_name)) <= availability.end))  as cou FROM availability_group, questionnaire_timeslot WHERE questionnaire_timeslot.questionnaire_id = c.questionnaire_id AND availability_group.availability_group_id = questionnaire_timeslot.availability_group_id ORDER BY cou ASC LIMIT 1)))
-          AND ((apn.appointment_id IS NOT NULL) OR (qasts.questionnaire_id IS NULL) OR ((SELECT COUNT(*) FROM availability WHERE availability.availability_group_id = qasts.availability_group_id AND (availability.day_of_week = DAYOFWEEK(CONVERT_TZ(NOW(),'System',s.Time_zone_name)) AND TIME(CONVERT_TZ(NOW(), 'System' , s.Time_zone_name)) >= availability.start AND TIME(CONVERT_TZ(NOW(), 'System' , s.Time_zone_name)) <= availability.end)) >= 1 AND (SELECT COUNT(call_attempt_id) FROM `call_attempt`, availability WHERE call_attempt.case_id = c.case_id AND (availability.availability_group_id = qasts.availability_group_id AND (availability.day_of_week = DAYOFWEEK(CONVERT_TZ(call_attempt.start,'UTC',s.Time_zone_name)) AND TIME(CONVERT_TZ(call_attempt.start, 'UTC' , s.Time_zone_name)) >= availability.start AND TIME(CONVERT_TZ(call_attempt.start, 'UTC' , s.Time_zone_name)) <= availability.end))) = (   SELECT (SELECT COUNT(*) FROM availability, call_attempt WHERE call_attempt.case_id = c.case_id AND availability.availability_group_id = availability_group.availability_group_id AND (availability.day_of_week = DAYOFWEEK(CONVERT_TZ(call_attempt.start,'UTC',s.Time_zone_name)) AND TIME(CONVERT_TZ(call_attempt.start, 'UTC' , s.Time_zone_name)) >= availability.start AND TIME(CONVERT_TZ(call_attempt.start, 'UTC' , s.Time_zone_name)) <= availability.end))  as cou FROM availability_group, questionnaire_sample_timeslot WHERE questionnaire_sample_timeslot.questionnaire_id = c.questionnaire_id AND questionnaire_sample_timeslot.sample_import_id = si.sample_import_id AND availability_group.availability_group_id = questionnaire_sample_timeslot.availability_group_id ORDER BY cou ASC LIMIT 1)))
+      AND ((apn.appointment_id IS NOT NULL) OR (qast.questionnaire_id IS NULL) OR ((SELECT COUNT(*) FROM availability WHERE availability.availability_group_id = qast.availability_group_id AND (availability.day_of_week = DAYOFWEEK(CONVERT_TZ(NOW(),'System',s.Time_zone_name)) AND TIME(CONVERT_TZ(NOW(), 'System' , s.Time_zone_name)) >= availability.start AND TIME(CONVERT_TZ(NOW(), 'System' , s.Time_zone_name)) <= availability.end)) >= 1 AND IFNULL((SELECT FLOOR(COUNT(call_attempt_id) / questionnaire_timeslot.weight) FROM `call_attempt`, availability, questionnaire_timeslot WHERE call_attempt.case_id = c.case_id AND (availability.availability_group_id = qast.availability_group_id AND questionnaire_timeslot.availability_group_id = availability.availability_group_id AND questionnaire_timeslot.questionnaire_id = c.questionnaire_id AND (availability.day_of_week = DAYOFWEEK(CONVERT_TZ(call_attempt.start,'UTC',s.Time_zone_name)) AND TIME(CONVERT_TZ(call_attempt.start, 'UTC' , s.Time_zone_name)) >= availability.start AND TIME(CONVERT_TZ(call_attempt.start, 'UTC' , s.Time_zone_name)) <= availability.end))),0) = (SELECT FLOOR((SELECT COUNT(*) FROM availability, call_attempt WHERE call_attempt.case_id = c.case_id AND availability.availability_group_id = availability_group.availability_group_id AND (availability.day_of_week = DAYOFWEEK(CONVERT_TZ(call_attempt.start,'UTC',s.Time_zone_name)) AND TIME(CONVERT_TZ(call_attempt.start, 'UTC' , s.Time_zone_name)) >= availability.start AND TIME(CONVERT_TZ(call_attempt.start, 'UTC' , s.Time_zone_name)) <= availability.end)) / questionnaire_timeslot.weight) as cou FROM availability_group, questionnaire_timeslot WHERE questionnaire_timeslot.questionnaire_id = c.questionnaire_id AND availability_group.availability_group_id = questionnaire_timeslot.availability_group_id ORDER BY cou ASC LIMIT 1)))
+          AND ((apn.appointment_id IS NOT NULL) OR (qasts.questionnaire_id IS NULL) OR ((SELECT COUNT(*) FROM availability WHERE availability.availability_group_id = qasts.availability_group_id AND (availability.day_of_week = DAYOFWEEK(CONVERT_TZ(NOW(),'System',s.Time_zone_name)) AND TIME(CONVERT_TZ(NOW(), 'System' , s.Time_zone_name)) >= availability.start AND TIME(CONVERT_TZ(NOW(), 'System' , s.Time_zone_name)) <= availability.end)) >= 1 AND IFNULL((SELECT FLOOR(COUNT(call_attempt_id) / questionnaire_sample_timeslot.weight) FROM `call_attempt`, availability, questionnaire_sample_timeslot WHERE call_attempt.case_id = c.case_id AND (availability.availability_group_id = qasts.availability_group_id AND questionnaire_sample_timeslot.availability_group_id = availability.availability_group_id AND questionnaire_sample_timeslot.questionnaire_id = c.questionnaire_id AND (availability.day_of_week = DAYOFWEEK(CONVERT_TZ(call_attempt.start,'UTC',s.Time_zone_name)) AND TIME(CONVERT_TZ(call_attempt.start, 'UTC' , s.Time_zone_name)) >= availability.start AND TIME(CONVERT_TZ(call_attempt.start, 'UTC' , s.Time_zone_name)) <= availability.end))),0) = (SELECT FLOOR((SELECT COUNT(*) FROM availability, call_attempt WHERE call_attempt.case_id = c.case_id AND availability.availability_group_id = availability_group.availability_group_id AND (availability.day_of_week = DAYOFWEEK(CONVERT_TZ(call_attempt.start,'UTC',s.Time_zone_name)) AND TIME(CONVERT_TZ(call_attempt.start, 'UTC' , s.Time_zone_name)) >= availability.start AND TIME(CONVERT_TZ(call_attempt.start, 'UTC' , s.Time_zone_name)) <= availability.end)) / questionnaire_sample_timeslot.weight) as cou FROM availability_group, questionnaire_sample_timeslot WHERE questionnaire_sample_timeslot.questionnaire_id = c.questionnaire_id AND questionnaire_sample_timeslot.sample_import_id = si.sample_import_id AND availability_group.availability_group_id = questionnaire_sample_timeslot.availability_group_id ORDER BY cou ASC LIMIT 1)))
 		            AND ((a.call_id is NULL) OR (a.end < CONVERT_TZ(DATE_SUB(NOW(), INTERVAL ou.default_delay_minutes MINUTE),'System','UTC')))
 					AND ap.case_id is NULL
 					AND ((qsep.questionnaire_id is NULL) OR (qsep.exclude = 0))
@@ -720,7 +673,7 @@ function get_case_id($operator_id, $create = false)
 					AND ((apn.appointment_id IS NOT NULL) OR (qs.call_max = 0) OR ((SELECT count(*) FROM `call` WHERE case_id = c.case_id) < qs.call_max))
 					AND ((apn.require_operator_id IS NULL) OR (apn.require_operator_id = '$operator_id'))
 					AND (SELECT count(*) FROM `questionnaire_sample_quota` WHERE questionnaire_id = c.questionnaire_id AND sample_import_id = s.import_id AND quota_reached = 1) = 0
-					ORDER BY IF(ISNULL(apn.end),1,0),apn.end ASC, qsep.priority DESC, CONVERT_TZ(NOW(), 'System' , s.Time_zone_name) DESC , a.start ASC, qs.sort_order ASC
+					ORDER BY IF(ISNULL(apn.end),1,0),apn.end ASC, IFNULL(qsep.priority,50) DESC, qs.sort_order ASC, CONVERT_TZ(NOW(), 'System' , s.Time_zone_name) DESC , a.start ASC
 					LIMIT 1";
 
  				//apn.appointment_id contains the id of an appointment if we are calling on an appointment
@@ -770,15 +723,18 @@ function get_case_id($operator_id, $create = false)
 						LEFT JOIN call_restrict as cr on (cr.day_of_week = DAYOFWEEK(CONVERT_TZ(NOW(), 'System' , s.Time_zone_name)) and TIME(CONVERT_TZ(NOW(), 'System' , s.Time_zone_name)) >= cr.start and TIME(CONVERT_TZ(NOW(), 'System' , s.Time_zone_name)) <= cr.end)
 						LEFT JOIN shift as sh on (sh.questionnaire_id = q.questionnaire_id and (CONVERT_TZ(NOW(),'System','UTC') >= sh.start) AND (CONVERT_TZ(NOW(),'System','UTC') <= sh.end))
 						LEFT JOIN questionnaire_sample_exclude_priority AS qsep ON (qsep.questionnaire_id = qs.questionnaire_id AND qsep.sample_id = s.sample_id)
+	          LEFT JOIN questionnaire_timeslot AS qast ON (qast.questionnaire_id = q.questionnaire_id)
+        		LEFT JOIN questionnaire_sample_timeslot AS qasts ON (qasts.questionnaire_id = q.questionnaire_id AND qasts.sample_import_id = si.sample_import_id)
 						WHERE c.case_id is NULL
 						AND ((qsep.questionnaire_id IS NULL) OR (qsep.exclude = 0))
 						AND !(q.restrict_work_shifts = 1 AND sh.shift_id IS NULL)
 						AND !(si.call_restrict = 1 AND cr.day_of_week IS NULL)
-						AND (SELECT count(*) FROM `questionnaire_sample_quota` WHERE questionnaire_id = qs.questionnaire_id AND sample_import_id = s.import_id AND quota_reached = 1) = 0
+            AND (SELECT count(*) FROM `questionnaire_sample_quota` WHERE questionnaire_id = qs.questionnaire_id AND sample_import_id = s.import_id AND quota_reached = 1) = 0
+            AND (qast.questionnaire_id IS NULL OR ((SELECT COUNT(*) FROM availability WHERE availability.availability_group_id = qast.availability_group_id AND (availability.day_of_week = DAYOFWEEK(CONVERT_TZ(NOW(),'System',s.Time_zone_name)) AND TIME(CONVERT_TZ(NOW(), 'System' , s.Time_zone_name)) >= availability.start AND TIME(CONVERT_TZ(NOW(), 'System' , s.Time_zone_name)) <= availability.end)) >= 1))
+      			AND (qasts.questionnaire_id IS NULL OR ((SELECT COUNT(*) FROM availability WHERE availability.availability_group_id = qasts.availability_group_id AND (availability.day_of_week = DAYOFWEEK(CONVERT_TZ(NOW(),'System',s.Time_zone_name)) AND TIME(CONVERT_TZ(NOW(), 'System' , s.Time_zone_name)) >= availability.start AND TIME(CONVERT_TZ(NOW(), 'System' , s.Time_zone_name)) <= availability.end)) >= 1))
 						ORDER BY qsep.priority DESC, CONVERT_TZ(NOW(), 'System' , s.Time_zone_name) DESC, rand() * qs.random_select, qs.sort_order ASC
 						LIMIT 1";
-				}			
-	
+        }
 				$r3 = $db->GetRow($sql);
 	
 	
@@ -1257,19 +1213,7 @@ function get_call($operator_id,$respondent_id = "",$contact_phone_id = "",$creat
 				$db->Execute($sql);
 				$id = $db->Insert_Id();
 
-				//If respondent selection is enabled, add token to RS Limesurvey database
-				$lime_rsid = is_respondent_selection($operator_id);
-
-				if ($lime_rsid !== true && $lime_rsid > 0 && !$db->HasFailedTrans())
-				//if the transaction hasn't failed and Limesurvey RS is enabled
-				{
-					$sql = "INSERT INTO ".LIME_PREFIX."tokens_$lime_rsid (tid,firstname,lastname,email,token,language,sent,completed,mpid)
-					VALUES (NULL,'','','',$id,'en','N','N',NULL)";
-		
-					//Insert the token as the call_id
-					$db->Execute($sql);
-				}
-				
+			    //disable respondent selection instrument	
 			}
 			else
 			{
@@ -1316,13 +1260,6 @@ function get_respondentselection_url($operator_id,$escape = true,$interface2 = f
 
 	if ($call_id)
 	{
-		$sid = get_limesurvey_id($operator_id,true); //true for RS
-		if ($sid != false && !empty($sid) && $sid != 'NULL')
-		{
-			$url = LIME_URL . "index.php?interviewer=interviewer" . $amp . "loadall=reload" . $amp . "sid=$sid" . $amp . "token=$call_id" . $amp . "lang=" . DEFAULT_LOCALE;
-		}
-		else
-		{
 			if (is_respondent_selection($operator_id) === false)
 		      	{
 		        	$url = get_limesurvey_url($operator_id);
@@ -1333,13 +1270,25 @@ function get_respondentselection_url($operator_id,$escape = true,$interface2 = f
 		      	{
 		          $url = 'rs_intro.php';
 		      	}
-		}
 	}
 
 	//if ($db->HasFailedTrans()) { print "FAILED in get_limesurvey_url"; exit; }
 	$db->CompleteTrans();
 
 	return $url;
+}
+
+function get_lime_url($case_id)
+{
+  global $db;
+
+  $sql = "SELECT r.entry_url
+          FROM remote as r, `case` as c, questionnaire as q
+          WHERE c.case_id = $case_id
+          AND c.questionnaire_id = q.questionnaire_id
+          AND q.remote_id = r.id";
+
+  return $db->GetOne($sql);
 }
 
 /**
@@ -1369,7 +1318,7 @@ function get_limesurvey_url($operator_id)
 		$token = $db->GetOne($sql);
 
 		$sid = get_limesurvey_id($operator_id);
-		$url = LIME_URL . "index.php?interviewer=interviewer&amp;loadall=reload&amp;sid=$sid&amp;token=$token&amp;lang=" . DEFAULT_LOCALE;
+		$url = get_lime_url($case_id) .  "/$sid/token/$token/lang/" . DEFAULT_LOCALE;
 		$questionnaire_id = get_questionnaire_id($operator_id);
 		
 		//get prefills
@@ -1382,7 +1331,7 @@ function get_limesurvey_url($operator_id)
 		if (!empty($pf))
 		{
 			foreach ($pf as $p)
-				$url .= "&amp;" . $p['lime_sgqa'] . "=" . template_replace($p['value'],$operator_id,$case_id);
+				$url .= "/" . $p['lime_sgqa'] . "/" . template_replace($p['value'],$operator_id,$case_id);
 		}
 	}
 
@@ -1806,8 +1755,7 @@ function update_single_row_quota($qsqri,$case_id = false)
     {
       //just determine if this case is linked to a matching sample record
       $sql2 = "SELECT count(*) as c
-               FROM " . LIME_PREFIX . "survey_$lime_sid as s
-               JOIN `case` as c ON (c.case_id = '$case_id')
+               FROM `case` as c
                JOIN `sample` as sam ON (c.sample_id = sam.sample_id) ";
       
       $x = 1;
@@ -1817,7 +1765,7 @@ function update_single_row_quota($qsqri,$case_id = false)
         $x++;
       }
 
-      $sql2 .= " WHERE s.token = c.token";
+      $sql2 .= " WHERE c.case_id = '$case_id'";
 
       $match = $db->GetOne($sql2); 
     }
@@ -1825,16 +1773,25 @@ function update_single_row_quota($qsqri,$case_id = false)
     {
       //determine if the case is linked to a matching limesurvey record
       $sql2 = "SELECT count(*) as c
-               FROM " . LIME_PREFIX . "survey_$lime_sid as s
-               JOIN `case` as c ON (c.case_id = '$case_id')
+               FROM `case` as c
                JOIN `sample` as sam ON (c.sample_id = sam.sample_id)
-               WHERE s.token = c.token
+               WHERE c.case_id = '$case_id'
                ";
 
+      include_once(dirname(__FILE__).'/functions.limesurvey.php');
+      //get response data from Limesurvey
+      $resp = lime_get_responses_by_case($case_id);
+
+      //get the result from the current response
+      $resp = current(current(current($resp)));
+
       foreach($qev as $ev)
-        $sql2 .= " AND s.`{$ev['lime_sgqa']}` {$ev['comparison']} '{$ev['value']}' ";
+      {
+        $sql2 .= " AND '"  . trim($resp->$ev['lime_sgqa']) . "' {$ev['comparison']} '{$ev['value']}' ";
+      }
 
       $match = $db->GetOne($sql2);
+
     }
 
     if ($match == 1)
@@ -1857,8 +1814,7 @@ function update_single_row_quota($qsqri,$case_id = false)
       //find all completions from cases with matching sample records
 
       $sql2 = "SELECT count(*) as c
-              FROM " . LIME_PREFIX . "survey_$lime_sid as s
-              JOIN `case` as c ON (c.questionnaire_id = '$questionnaire_id')
+              FROM `case` as c
               JOIN `sample` as sam ON (c.sample_id = sam.sample_id AND sam.import_id = '$sample_import_id')";
 
       $x = 1;
@@ -1868,25 +1824,48 @@ function update_single_row_quota($qsqri,$case_id = false)
         $x++;
       }
 
-      $sql2 .= "  WHERE s.submitdate IS NOT NULL
-              AND s.token = c.token";
+      $sql2 .= "  WHERE c.questionnaire_id = '$questionnaire_id'
+                  AND c.current_outcome_id = 10"; //check completions by outcome
 
       $completions = $db->GetOne($sql2);
     }
     else
     {
       //find all completions from cases with matching limesurvey records
-      $sql2 = "SELECT count(*) as c 
-              FROM " . LIME_PREFIX . "survey_$lime_sid as s 
-              JOIN `case` as c ON (c.questionnaire_id = '$questionnaire_id') 
-              JOIN `sample` as sam ON (c.sample_id = sam.sample_id AND sam.import_id = '$sample_import_id') 
-              WHERE s.submitdate IS NOT NULL 
-              AND s.token = c.token ";
 
-      foreach($qev as $ev)
-        $sql2 .= " AND s.`{$ev['lime_sgqa']}` {$ev['comparison']} '{$ev['value']}' ";
+      include_once(dirname(__FILE__).'/functions.limesurvey.php');
+      $resp = lime_get_responses_by_questionnaire($questionnaire_id);
 
-       $completions = $db->GetOne($sql2);
+      if ($resp !== false) {
+
+        $sql2 = "SELECT c.token,c.token as tok
+              FROM `case` as c
+              JOIN `sample` as sam ON (c.sample_id = sam.sample_id AND sam.import_id = '$sample_import_id')
+              WHERE c.questionnaire_id = '$questionnaire_id'";
+      
+        $rs = $db->GetAssoc($sql2);
+
+        foreach($resp as $r) {
+          foreach($r as $r1) {
+            foreach($r1 as $rl) {
+            if (isset($rl->token) && isset($rs[$rl->token])) {
+              //match to a case in the sample
+              $tmp = 0;
+              foreach($qev as $ev) {
+                if (isset($rl->$ev['lime_sgqa'])) {
+                  $tmp = lime_compare($rl->$ev['lime_sgqa'], $ev['comparison'], $ev['value']);
+                  if ($tmp != 1) {
+                    break;
+                  }
+                }
+              }
+              $completions += $tmp;
+            }
+            }
+          }
+        }
+      }
+
     }
 
     $updatequota = true;
@@ -2172,9 +2151,10 @@ function end_case($operator_id)
 			$outcome = 1; //default outcome is 1 - not attempted
 	
 			//last call
-			$sql = "SELECT call_id,outcome_id
-				FROM `call`
-				WHERE case_id = '$case_id'
+			$sql = "SELECT c.call_id,c.outcome_id, o.tryanother
+				FROM `call` as c, `outcome` as o
+                WHERE case_id = '$case_id'
+                AND c.outcome_id = o.outcome_id
 				ORDER BY call_id DESC
 				LIMIT 1";
 	
@@ -2232,7 +2212,7 @@ function end_case($operator_id)
                   AND o.eligible = 1
                   AND c.case_id = '$case_id'";
 
-        if ($cm['call_attempt_max'] > 0 && $callattempts >= $cm['call_attempt_max']) //max call attempts reached
+        if ($l['tryanother'] == 1 && $cm['call_attempt_max'] > 0 && $callattempts >= $cm['call_attempt_max']) //max call attempts reached AND last call to be tried again
         {
           //if ever eligible, code as eligible
           if ($db->GetOne($eligsql) > 0)
@@ -2240,7 +2220,7 @@ function end_case($operator_id)
           else
             $outcome = 42;
         }
-        else if ($cm['call_max'] > 0 && $calls >= $cm['call_max']) //max calls reached
+        else if ($l['tryanother'] == 1 && $cm['call_max'] > 0 && $calls >= $cm['call_max']) //max calls reached AND last call to be tried again
         {
           //if ever eligible, code as eligible
           if ($db->GetOne($eligsql) > 0)
@@ -2268,7 +2248,7 @@ function end_case($operator_id)
  		}
  		else
 		{
-			//the last call is the call with the final otucome
+			//there was a call with the final otucome
 			$outcome = $a['outcome_id'];
 			$lastcall = $a['call_id'];
 
@@ -2281,7 +2261,22 @@ function end_case($operator_id)
 			SET current_operator_id = NULL, current_call_id = NULL, sortorder = NULL, current_outcome_id = '$outcome', last_call_id = '$lastcall'
 			WHERE case_id = '$case_id'";
 
-		$o = $db->Execute($sql);
+    $o = $db->Execute($sql);
+
+    //if this is a refusal outcome - set the Limesurvey token table to opt-out
+    //this will avoid sending email invitations once refused on the phone
+
+    $sql = "SELECT count(*)
+            FROM outcome
+            WHERE outcome_type_id = 3
+            AND outcome_id = $outcome";
+
+    $isrefusal = $db->GetOne($sql);
+
+    if ($isrefusal > 0) {
+      include_once(dirname(__FILE__).'/functions.limesurvey.php');
+      lime_set_token_properties($case_id,array('emailstatus' => 'OptOut'));
+    }
 
 		$return = true;
 	}
@@ -2511,11 +2506,8 @@ function get_limesurvey_id($operator_id,$rs = false)
 	else
 		$sql = "SELECT q.lime_sid as sid";
 
-	$sql .= " FROM `case` as c, questionnaire_sample as qs, sample as s, questionnaire as q
+	$sql .= " FROM `case` as c, questionnaire as q
 		WHERE c.current_operator_id = '$operator_id'
-		AND c.sample_id = s.sample_id
-		AND s.import_id = qs.sample_import_id
-		AND q.questionnaire_id = qs.questionnaire_id
 		AND c.questionnaire_id = q.questionnaire_id";
 
 	$rs = $db->GetRow($sql);
